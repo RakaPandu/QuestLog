@@ -1,5 +1,26 @@
 [
   {
+    "id": "game_1794739662544",
+    "steamAppId": "292030",
+    "title": "The Witcher 3: Wild Hunt — Remastered",
+    "status": "playing",
+    "coverUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/292030/library_600x900.jpg",
+    "bannerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/292030/header.jpg",
+    "genres": [
+      "RPG"
+    ],
+    "releaseDate": "18 May, 2015",
+    "developer": "CD PROJEKT RED",
+    "playtimeHours": 52,
+    "currentProgress": "Havengrad",
+    "dropReason": "",
+    "rating": 0,
+    "notes": "mantap",
+    "platform": "PC (Steam)",
+    "createdAt": "2026-11-15T10:47:42.544Z",
+    "updatedAt": "2026-11-15T10:47:53.388Z"
+  },
+  {
     "id": "steam_1245620",
     "steamAppId": "1245620",
     "title": "ELDEN RING",
