@@ -21,15 +21,16 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortOption>('updated');
 
-  // Zoom Scale state (default 100%, clamp between 75% and 130%)
+  // Zoom Scale state (Strict range: 100% min to 125% max)
   const [zoomScale, setZoomScale] = useState<number>(() => {
     const saved = localStorage.getItem('questlog_zoom');
-    return saved ? Number(saved) : 100;
+    const val = saved ? Number(saved) : 100;
+    return Math.max(100, Math.min(125, val));
   });
 
   const handleZoomIn = useCallback(() => {
     setZoomScale(prev => {
-      const next = Math.min(130, prev + 5);
+      const next = Math.min(125, prev + 5);
       localStorage.setItem('questlog_zoom', String(next));
       return next;
     });
@@ -37,7 +38,8 @@ export function App() {
 
   const handleZoomOut = useCallback(() => {
     setZoomScale(prev => {
-      const next = Math.max(75, prev - 5);
+      // Mentok minimal di 100% (tidak bisa diperkecil di bawah 100%)
+      const next = Math.max(100, prev - 5);
       localStorage.setItem('questlog_zoom', String(next));
       return next;
     });
@@ -48,31 +50,56 @@ export function App() {
     localStorage.setItem('questlog_zoom', '100');
   }, []);
 
-  // Keyboard shortcut listener for Ctrl + and Ctrl - and Ctrl 0
+  // Keyboard shortcut listener: Ctrl + and Ctrl - (Mentok min 100%, max 125%)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
-        if (e.key === '+' || e.key === '=') {
+        // Prevent all browser default zoom behaviors
+        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
           e.preventDefault();
           handleZoomIn();
-        } else if (e.key === '-' || e.key === '_') {
+        } else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
           e.preventDefault();
           handleZoomOut();
-        } else if (e.key === '0') {
+        } else if (e.key === '0' || e.code === 'Numpad0') {
           e.preventDefault();
           handleZoomReset();
         }
       }
     };
 
+    // Block native Ctrl + Mouse Wheel zoom so the browser doesn't stretch or distort
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          handleZoomIn();
+        } else if (e.deltaY > 0) {
+          handleZoomOut();
+        }
+      }
+    };
+
+    // Block gesture zoom on touchpads
+    const handleGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
     window.addEventListener('keydown', handleKeyDown, { passive: false });
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('gesturestart', handleGesture);
+    document.addEventListener('gesturechange', handleGesture);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('gesturestart', handleGesture);
+      document.removeEventListener('gesturechange', handleGesture);
+    };
   }, [handleZoomIn, handleZoomOut, handleZoomReset]);
 
-  // Apply zoom scale style
+  // Apply zoom scale style to document root
   useEffect(() => {
-    // In Chromium / Edge, style.zoom provides seamless, crisp proportional scaling
-    // without clipping or broken fixed positioning
     (document.documentElement.style as any).zoom = `${zoomScale}%`;
   }, [zoomScale]);
 
@@ -174,7 +201,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-slate-100 flex flex-col w-full overflow-x-hidden selection:bg-purple-600 selection:text-white">
+    <div className="min-h-screen bg-[#0c0e14] text-slate-100 flex flex-col w-full overflow-x-hidden selection:bg-slate-700 selection:text-white">
       {/* Top Navbar */}
       <Navbar
         stats={stats}
@@ -189,17 +216,17 @@ export function App() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-5 py-4 overflow-x-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-3.5 overflow-x-hidden">
         {/* Error Banner */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between text-rose-300 text-xs">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <div className="mb-3.5 p-2.5 rounded-md bg-[#240a0e] border border-[#4d141d] flex items-center justify-between text-rose-300 text-xs">
+            <div className="flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
               <span>{error}</span>
             </div>
             <button
               onClick={loadData}
-              className="px-2.5 py-1 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-[11px] font-bold transition-colors"
+              className="px-2 py-0.5 rounded bg-rose-950/60 hover:bg-rose-900/60 text-rose-200 text-[11px] font-medium transition-colors"
             >
               Coba Lagi
             </button>
@@ -219,12 +246,12 @@ export function App() {
 
         {/* Game Cards Grid - Compact & Responsive */}
         {isLoading && games.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-            <Gamepad2 className="w-10 h-10 text-purple-500/40 animate-bounce mb-2" />
-            <p className="text-xs font-medium">Memuat katalog game Anda...</p>
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+            <Gamepad2 className="w-8 h-8 text-slate-600 mb-2" />
+            <p className="text-xs font-medium">Memuat katalog game...</p>
           </div>
         ) : filteredGames.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3">
             {filteredGames.map(game => (
               <GameCard
                 key={game.id}
@@ -243,21 +270,21 @@ export function App() {
           </div>
         ) : (
           /* Empty State */
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-2xl border border-dashed border-white/10 bg-slate-900/30 my-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-3 shadow-md shadow-purple-500/10">
-              <Gamepad2 className="w-6 h-6" />
+          <div className="flex flex-col items-center justify-center py-14 px-4 text-center rounded-lg border border-dashed border-[#1f2638] bg-[#11141e]/50 my-3">
+            <div className="w-10 h-10 rounded-lg bg-[#161b26] border border-[#232c40] flex items-center justify-center text-slate-400 mb-2.5">
+              <Gamepad2 className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-bold text-white mb-1">
+            <h3 className="text-xs font-bold text-white mb-0.5">
               {searchQuery ? 'Tidak Ada Game yang Cocok' : 'Belum Ada Game di Kategori Ini'}
             </h3>
-            <p className="text-[11px] text-slate-400 max-w-xs mb-4">
+            <p className="text-[11px] text-slate-400 max-w-xs mb-3">
               {searchQuery
                 ? `Tidak ditemukan game dengan kata kunci "${searchQuery}". Coba ubah pencarian.`
                 : 'Mulai catat game favoritmu, game yang ingin kamu mainkan, atau game yang sudah kamu drop.'}
             </p>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-sm shadow-purple-600/30 transition-all hover:scale-[1.02]"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 border border-sky-500 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Game Baru</span>

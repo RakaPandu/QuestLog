@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Loader2, Sparkles, Check, Bookmark, Flame, Trophy, XCircle, PauseCircle } from 'lucide-react';
+import { X, Search, Loader2, Gamepad2, Check, Bookmark, Flame, Trophy, XCircle, PauseCircle } from 'lucide-react';
 import type { Game, GameStatus, SteamSearchResult, SteamGameDetails } from '../types/game';
 import { api } from '../services/api';
 
@@ -132,31 +132,31 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-[#121520] border border-[#242b3d] rounded-xl shadow-2xl overflow-hidden my-6">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-950/50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#202636] bg-[#0f121a]">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-400" />
-            <h2 className="text-lg font-bold text-white">Tambah Game ke Tracker</h2>
+            <Gamepad2 className="w-4 h-4 text-slate-300" />
+            <h2 className="text-sm font-bold text-white">Tambah Game ke Tracker</h2>
           </div>
           <button
             onClick={() => {
               resetForm();
               onClose();
             }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Steam Search Section */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold text-slate-300">
-                Cari Game di Steam (Auto-Fetch Cover & Info):
+                Cari Game di Steam:
               </label>
               <button
                 type="button"
@@ -164,46 +164,46 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
                   setIsManualMode(!isManualMode);
                   if (!isManualMode) setSearchResults([]);
                 }}
-                className="text-xs text-purple-400 hover:text-purple-300 underline"
+                className="text-xs text-sky-400 hover:text-sky-300 underline"
               >
-                {isManualMode ? 'Gunakan Steam Search' : 'Atau Input Manual Non-Steam'}
+                {isManualMode ? 'Gunakan Steam Search' : 'Input Manual Non-Steam'}
               </button>
             </div>
 
             {!isManualMode ? (
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
-                  placeholder="Ketik judul game (contoh: Elden Ring, Hollow Knight, Monster Hunter)..."
+                  placeholder="Ketik judul game (contoh: Elden Ring, Hollow Knight)..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60 focus:ring-1 focus:ring-purple-500/60"
+                  className="w-full pl-9 pr-8 py-2 bg-[#0c0e14] border border-[#22293b] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c]"
                 />
                 {isSearching && (
-                  <Loader2 className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-purple-400 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
                 )}
 
                 {/* Search Results Dropdown */}
                 {searchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 max-h-60 overflow-y-auto bg-slate-950 border border-purple-500/30 rounded-xl shadow-2xl z-20 divide-y divide-white/5">
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-[#0f121a] border border-[#262f45] rounded-md shadow-2xl z-20 divide-y divide-[#1e2436]">
                     {searchResults.map(item => (
                       <div
                         key={item.id}
                         onClick={() => handleSelectSteamGame(item)}
-                        className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer transition-colors"
+                        className="flex items-center gap-2.5 p-2.5 hover:bg-[#1a2130] cursor-pointer transition-colors"
                       >
                         <img
                           src={item.tiny_image}
                           alt={item.name}
-                          className="w-16 h-8 object-cover rounded bg-slate-800 shrink-0"
+                          className="w-14 h-7 object-cover rounded bg-[#090b10] shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{item.name}</p>
-                          <p className="text-xs text-slate-400">Steam AppID: {item.id}</p>
+                          <p className="text-xs font-semibold text-white truncate">{item.name}</p>
+                          <p className="text-[10px] text-slate-500">AppID: {item.id}</p>
                         </div>
                         {item.metascore && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 font-bold border border-emerald-800/50">
                             {item.metascore}
                           </span>
                         )}
@@ -215,18 +215,18 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
             ) : null}
 
             {isLoadingDetails && (
-              <div className="flex items-center gap-2 mt-2 text-xs text-purple-400">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Mengambil cover HD dan data Steam...</span>
+              <div className="flex items-center gap-1.5 mt-1.5 text-xs text-sky-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Mengambil data cover Steam...</span>
               </div>
             )}
           </div>
 
           {/* Selected Game Preview or Form Inputs */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-slate-950/60 border border-white/5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 rounded-lg bg-[#0d1017] border border-[#1e2436]">
             {/* Cover Preview Column */}
             <div className="flex flex-col items-center justify-center">
-              <div className="w-32 aspect-[2/3] rounded-xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center relative shadow-lg">
+              <div className="w-28 aspect-[2/3] rounded-md bg-[#090a0f] border border-[#202738] overflow-hidden flex items-center justify-center relative">
                 {coverUrl ? (
                   <img
                     src={coverUrl}
@@ -237,44 +237,44 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
                     }}
                   />
                 ) : (
-                  <span className="text-xs text-slate-500 text-center px-2">Cover Preview (Steam)</span>
+                  <span className="text-[11px] text-slate-600 text-center px-2">Cover Steam</span>
                 )}
               </div>
             </div>
 
             {/* Title & Metadata Inputs */}
-            <div className="md:col-span-2 space-y-3">
+            <div className="md:col-span-2 space-y-2.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Judul Game *</label>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Judul Game *</label>
                 <input
                   type="text"
                   required
                   placeholder="Nama Game"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/60"
+                  className="w-full px-2.5 py-1.5 bg-[#141824] border border-[#262e42] rounded-md text-xs text-white focus:outline-none focus:border-[#3d4b6c]"
                 />
               </div>
 
               {/* Status Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Status Game *</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Status Game *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
                   {[
-                    { id: 'plan_to_play', label: 'Plan to Play', icon: <Bookmark className="w-3.5 h-3.5 text-indigo-400" /> },
-                    { id: 'playing', label: 'Playing', icon: <Flame className="w-3.5 h-3.5 text-emerald-400" /> },
-                    { id: 'completed', label: 'Completed', icon: <Trophy className="w-3.5 h-3.5 text-amber-400" /> },
-                    { id: 'dropped', label: 'Dropped', icon: <XCircle className="w-3.5 h-3.5 text-rose-400" /> },
-                    { id: 'on_hold', label: 'On Hold', icon: <PauseCircle className="w-3.5 h-3.5 text-slate-400" /> },
+                    { id: 'plan_to_play', label: 'Backlog', icon: <Bookmark className="w-3 h-3 text-slate-300" /> },
+                    { id: 'playing', label: 'Playing', icon: <Flame className="w-3 h-3 text-emerald-400" /> },
+                    { id: 'completed', label: 'Completed', icon: <Trophy className="w-3 h-3 text-amber-400" /> },
+                    { id: 'dropped', label: 'Dropped', icon: <XCircle className="w-3 h-3 text-rose-400" /> },
+                    { id: 'on_hold', label: 'On Hold', icon: <PauseCircle className="w-3 h-3 text-slate-400" /> },
                   ].map(s => (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => setStatus(s.id as GameStatus)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                         status === s.id
-                          ? 'bg-purple-600/30 border-purple-500 text-white shadow-sm'
-                          : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                          ? 'bg-[#1e2638] border-[#384666] text-white'
+                          : 'bg-[#11141e] border-[#1f2538] text-slate-400 hover:text-white'
                       }`}
                     >
                       {s.icon}
@@ -285,20 +285,20 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
               </div>
 
               {/* Playtime & Rating */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Jam Main (Hours)</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Jam Main</label>
                   <input
                     type="number"
                     min="0"
                     step="0.5"
                     value={playtimeHours}
                     onChange={e => setPlaytimeHours(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/60"
+                    className="w-full px-2 py-1 bg-[#141824] border border-[#262e42] rounded-md text-xs text-white focus:outline-none focus:border-[#3d4b6c]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Rating Pribadi (0 - 10)</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Rating (0 - 10)</label>
                   <input
                     type="number"
                     min="0"
@@ -306,7 +306,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
                     step="0.5"
                     value={rating}
                     onChange={e => setRating(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/60"
+                    className="w-full px-2 py-1 bg-[#141824] border border-[#262e42] rounded-md text-xs text-white focus:outline-none focus:border-[#3d4b6c]"
                   />
                 </div>
               </div>
@@ -315,72 +315,72 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onG
 
           {/* Progress Tracker Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Catatan Progress Saat Ini (Chapter, Quest, dll.):
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Catatan Progress (Bab, Quest, dll.):
             </label>
             <input
               type="text"
               placeholder="Contoh: Chapter 4, Baru kalahkan Boss Radahn, Quest Utama 60%..."
               value={currentProgress}
               onChange={e => setCurrentProgress(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
+              className="w-full px-3 py-1.5 bg-[#0c0e14] border border-[#22293b] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c]"
             />
           </div>
 
-          {/* Dropped Reason - Highlights when status === 'dropped' */}
+          {/* Dropped Reason - Shows when status === 'dropped' */}
           {status === 'dropped' && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-1.5 animate-fadeIn">
-              <label className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
-                <XCircle className="w-4 h-4 text-rose-400" />
-                Alasan Di-drop (Kenapa gak kamu lanjutin?):
+            <div className="p-3 rounded-md bg-[#240a0e] border border-[#4d141d] space-y-1">
+              <label className="block text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                Alasan Di-drop (Kenapa Ditinggalkan?):
               </label>
               <textarea
                 rows={2}
-                placeholder="Contoh: Gameplay terlalu repetitif, kontrol kaku, story kurang menarik setelah 10 jam..."
+                placeholder="Contoh: Gameplay repetitif setelah 15 jam, kontrol kaku..."
                 value={dropReason}
                 onChange={e => setDropReason(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-rose-500/30 rounded-lg text-sm text-white placeholder-rose-300/40 focus:outline-none focus:border-rose-400"
+                className="w-full px-2.5 py-1.5 bg-[#140608] border border-[#4d141d] rounded text-xs text-white placeholder-rose-400/40 focus:outline-none focus:border-rose-400"
               />
             </div>
           )}
 
           {/* Personal Notes */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Catatan Tambahan / Review Singkat:</label>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">Catatan Tambahan / Review Singkat:</label>
             <textarea
               rows={2}
-              placeholder="Kesan pertama, build karakter favorit, dll..."
+              placeholder="Kesan pertama, build karakter, hal yang disukai..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
+              className="w-full px-3 py-1.5 bg-[#0c0e14] border border-[#22293b] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c]"
             />
           </div>
 
           {/* Form Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e2436]">
             <button
               type="button"
               onClick={() => {
                 resetForm();
                 onClose();
               }}
-              className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+              className="px-3.5 py-1.5 rounded-md text-xs text-slate-400 hover:text-white bg-[#161a26] hover:bg-[#1f2538] transition-colors"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !title.trim()}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-md shadow-purple-600/30 transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 border border-sky-500 transition-colors disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>Menyimpan...</span>
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4" />
+                  <Check className="w-3.5 h-3.5" />
                   <span>Simpan Game</span>
                 </>
               )}

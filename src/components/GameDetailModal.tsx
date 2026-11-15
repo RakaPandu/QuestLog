@@ -43,8 +43,8 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
     setStatus(newStatus);
     if (newStatus === 'completed' && game.status !== 'completed') {
       confetti({
-        particleCount: 100,
-        spread: 70,
+        particleCount: 80,
+        spread: 60,
         origin: { y: 0.6 },
       });
     }
@@ -91,10 +91,10 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-[#121520] border border-[#242b3d] rounded-xl shadow-2xl overflow-hidden my-6">
         {/* Banner Header Image with overlay */}
-        <div className="relative h-56 sm:h-64 w-full bg-slate-950 overflow-hidden">
+        <div className="relative h-48 sm:h-52 w-full bg-[#090b10] overflow-hidden">
           {game.bannerUrl ? (
             <img
               src={game.bannerUrl}
@@ -102,33 +102,33 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
               className="w-full h-full object-cover opacity-60"
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-purple-900/40 via-indigo-900/40 to-slate-900" />
+            <div className="w-full h-full bg-[#161a26]" />
           )}
 
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#121520] via-[#121520]/75 to-transparent" />
 
           {/* Close button top right */}
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-slate-300 hover:text-white hover:bg-black/80 backdrop-blur-md border border-white/10 transition-colors"
+            className="absolute top-3 right-3 p-1.5 rounded-md bg-black/60 text-slate-300 hover:text-white border border-white/10 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
 
           {/* Title & Developer in Banner */}
-          <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between gap-4">
+          <div className="absolute bottom-3 left-5 right-5 flex items-end justify-between gap-3">
             <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 mb-1">
                 {game.genres && game.genres.map((g, i) => (
-                  <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">
+                  <span key={i} className="text-[10px] px-2 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">
                     {g}
                   </span>
                 ))}
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
                 {game.title}
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-400 mt-0.5">
                 {game.developer || 'Unknown Developer'} {game.releaseDate ? `• ${game.releaseDate}` : ''}
               </p>
             </div>
@@ -139,38 +139,38 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                 href={`https://store.steampowered.com/app/${game.steamAppId}`}
                 target="_blank"
                 rel="noreferrer"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-semibold text-slate-200 border border-white/10 backdrop-blur-md transition-colors"
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded bg-[#1c2233] hover:bg-[#252d44] text-xs font-medium text-slate-200 border border-[#2c3752] transition-colors"
               >
-                <span>Buka di Steam</span>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                <span>Halaman Steam</span>
+                <ExternalLink className="w-3 h-3 text-slate-400" />
               </a>
             )}
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6">
+        <div className="p-5 space-y-4">
           {/* Status Bar */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Status Permainan
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Status Game
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               {[
-                { id: 'plan_to_play', label: 'Plan to Play', icon: <Bookmark className="w-4 h-4 text-indigo-400" />, activeClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' },
-                { id: 'playing', label: 'Playing', icon: <Flame className="w-4 h-4 text-emerald-400" />, activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' },
-                { id: 'completed', label: 'Completed', icon: <Trophy className="w-4 h-4 text-amber-400" />, activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50' },
-                { id: 'dropped', label: 'Dropped', icon: <XCircle className="w-4 h-4 text-rose-400" />, activeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/50' },
-                { id: 'on_hold', label: 'On Hold', icon: <PauseCircle className="w-4 h-4 text-slate-400" />, activeClass: 'bg-slate-700/40 text-slate-300 border-slate-600/50' },
+                { id: 'plan_to_play', label: 'Backlog', icon: <Bookmark className="w-3.5 h-3.5 text-slate-300" />, activeClass: 'bg-[#181d2b] text-slate-200 border-[#384666]' },
+                { id: 'playing', label: 'Playing', icon: <Flame className="w-3.5 h-3.5 text-emerald-400" />, activeClass: 'bg-[#06281e] text-emerald-300 border-[#0b4d3a]' },
+                { id: 'completed', label: 'Completed', icon: <Trophy className="w-3.5 h-3.5 text-amber-400" />, activeClass: 'bg-[#291804] text-amber-300 border-[#5e370a]' },
+                { id: 'dropped', label: 'Dropped', icon: <XCircle className="w-3.5 h-3.5 text-rose-400" />, activeClass: 'bg-[#2b0c10] text-rose-300 border-[#5e1923]' },
+                { id: 'on_hold', label: 'On Hold', icon: <PauseCircle className="w-3.5 h-3.5 text-slate-400" />, activeClass: 'bg-[#181d26] text-slate-200 border-[#2c3445]' },
               ].map(s => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => handleStatusChange(s.id as GameStatus)}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-md text-xs font-medium border transition-colors ${
                     status === s.id
-                      ? `${s.activeClass} shadow-md`
-                      : 'bg-slate-950/60 border-white/5 text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? `${s.activeClass} shadow-sm`
+                      : 'bg-[#0e111a] border-[#1e2436] text-slate-400 hover:text-white'
                   }`}
                 >
                   {s.icon}
@@ -181,15 +181,15 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
           </div>
 
           {/* Quick Playtime & Rating Counters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Playtime Tracker */}
-            <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/5 space-y-2">
+            <div className="p-3 rounded-lg bg-[#0e111a] border border-[#1e2436] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-purple-400" />
-                  Jam Bermain (Hours)
+                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  Jam Bermain
                 </span>
-                <span className="text-lg font-extrabold text-white">{playtimeHours} jam</span>
+                <span className="text-sm font-bold text-white">{playtimeHours} jam</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -198,19 +198,19 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                   step="0.5"
                   value={playtimeHours}
                   onChange={e => setPlaytimeHours(parseFloat(e.target.value) || 0)}
-                  className="w-24 px-3 py-1.5 bg-slate-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/60"
+                  className="w-20 px-2 py-1 bg-[#141824] border border-[#242b3d] rounded text-xs text-white focus:outline-none focus:border-[#3d4b6c]"
                 />
                 <button
                   type="button"
                   onClick={() => handleAddPlaytime(1)}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-purple-300 border border-white/5 transition-colors flex items-center gap-0.5"
+                  className="px-2 py-1 rounded bg-[#1c2233] hover:bg-[#252e45] text-xs font-semibold text-slate-300 border border-[#28324a] transition-colors flex items-center gap-0.5"
                 >
                   <Plus className="w-3 h-3" /> 1h
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAddPlaytime(5)}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-purple-300 border border-white/5 transition-colors flex items-center gap-0.5"
+                  className="px-2 py-1 rounded bg-[#1c2233] hover:bg-[#252e45] text-xs font-semibold text-slate-300 border border-[#28324a] transition-colors flex items-center gap-0.5"
                 >
                   <Plus className="w-3 h-3" /> 5h
                 </button>
@@ -218,13 +218,13 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
             </div>
 
             {/* Rating Selector */}
-            <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/5 space-y-2">
+            <div className="p-3 rounded-lg bg-[#0e111a] border border-[#1e2436] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Star className="w-3.5 h-3.5 text-amber-400" />
-                  Rating Pribadi (Skala 0 - 10)
+                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                  <Star className="w-3 h-3 text-amber-400" />
+                  Rating Pribadi
                 </span>
-                <span className="text-lg font-extrabold text-amber-400">
+                <span className="text-sm font-bold text-amber-400">
                   {rating > 0 ? `${rating} / 10` : 'Belum dinilai'}
                 </span>
               </div>
@@ -235,73 +235,73 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                 step="0.5"
                 value={rating}
                 onChange={e => setRating(parseFloat(e.target.value))}
-                className="w-full accent-purple-500 cursor-pointer"
+                className="w-full accent-amber-400 cursor-pointer"
               />
             </div>
           </div>
 
           {/* Progress Notes */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Catatan Progress (Bab / Chapter / Boss / Milestone Saat Ini)
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Catatan Progress (Bab / Quest / Milestone):
             </label>
             <input
               type="text"
               placeholder="Contoh: Chapter 6, Selesai side quest festival, Level 45..."
               value={currentProgress}
               onChange={e => setCurrentProgress(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
+              className="w-full px-3 py-1.5 bg-[#0e111a] border border-[#202738] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c]"
             />
           </div>
 
-          {/* Dropped Reason (Prominent if dropped) */}
+          {/* Dropped Reason */}
           {status === 'dropped' && (
-            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-2 animate-fadeIn">
-              <div className="flex items-center gap-2 text-rose-400 text-xs font-bold uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-rose-400" />
-                Alasan Game Di-drop (Kenapa Ditinggalkan?)
+            <div className="p-3 rounded-md bg-[#240a0e] border border-[#4d141d] space-y-1">
+              <div className="flex items-center gap-1.5 text-rose-300 text-xs font-bold">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                Alasan Game Di-drop:
               </div>
               <textarea
-                rows={3}
-                placeholder="Tulis alasan kenapa kamu gak lanjutin game ini biar kamu inget nanti..."
+                rows={2}
+                placeholder="Tulis alasan kenapa game ini di-drop agar kamu ingat..."
                 value={dropReason}
                 onChange={e => setDropReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-rose-500/30 rounded-xl text-sm text-white placeholder-rose-300/40 focus:outline-none focus:border-rose-400"
+                className="w-full px-2.5 py-1.5 bg-[#140608] border border-[#4d141d] rounded text-xs text-white placeholder-rose-400/40 focus:outline-none focus:border-rose-400"
               />
             </div>
           )}
 
           {/* Notes / Personal Review */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Review Pribadi / Catatan
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Review Pribadi / Catatan:
             </label>
             <textarea
-              rows={3}
-              placeholder="Ceritakan impresi, build karakter, hal yang kamu suka atau kurang suka..."
+              rows={2}
+              placeholder="Impresi, build karakter, gameplay..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
+              className="w-full px-3 py-1.5 bg-[#0e111a] border border-[#202738] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c]"
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-white/10">
+          <div className="flex items-center justify-between pt-3 border-t border-[#1e2436]">
             <button
               type="button"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/40 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Hapus Game</span>
+              <span>Hapus</span>
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                className="px-3.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white bg-[#161a26] hover:bg-[#1f2538] transition-colors"
               >
                 Tutup
               </button>
@@ -309,9 +309,9 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-md shadow-purple-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 border border-sky-500 transition-colors"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
               </button>
             </div>

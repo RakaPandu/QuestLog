@@ -13,31 +13,31 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
     playing: {
       label: 'Playing',
       icon: <Flame className="w-2.5 h-2.5 text-emerald-400" />,
-      bg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+      bg: 'bg-[#06281e] text-emerald-300 border-[#0b4d3a]',
       badgeDot: 'bg-emerald-400',
     },
     plan_to_play: {
       label: 'Backlog',
-      icon: <Bookmark className="w-2.5 h-2.5 text-indigo-400" />,
-      bg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-      badgeDot: 'bg-indigo-400',
+      icon: <Bookmark className="w-2.5 h-2.5 text-slate-300" />,
+      bg: 'bg-[#181d2b] text-slate-300 border-[#2b354d]',
+      badgeDot: 'bg-slate-400',
     },
     completed: {
       label: 'Completed',
       icon: <Trophy className="w-2.5 h-2.5 text-amber-400" />,
-      bg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+      bg: 'bg-[#291804] text-amber-300 border-[#5e370a]',
       badgeDot: 'bg-amber-400',
     },
     dropped: {
       label: 'Dropped',
       icon: <XCircle className="w-2.5 h-2.5 text-rose-400" />,
-      bg: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+      bg: 'bg-[#2b0c10] text-rose-300 border-[#5e1923]',
       badgeDot: 'bg-rose-400',
     },
     on_hold: {
       label: 'On Hold',
       icon: <PauseCircle className="w-2.5 h-2.5 text-slate-400" />,
-      bg: 'bg-slate-700/40 text-slate-300 border-slate-600/30',
+      bg: 'bg-[#181d26] text-slate-300 border-[#2c3445]',
       badgeDot: 'bg-slate-400',
     },
   }[game.status];
@@ -45,16 +45,16 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
   return (
     <div
       onClick={onClick}
-      className="group relative flex flex-col rounded-xl glass-card overflow-hidden cursor-pointer select-none transition-all duration-200 hover:scale-[1.015]"
+      className="group relative flex flex-col rounded-lg surface-card overflow-hidden cursor-pointer select-none"
     >
       {/* Game Cover Poster (Aspect Ratio 2:3 - Steam Library Standard) */}
-      <div className="relative aspect-[2/3] w-full bg-slate-900 overflow-hidden">
+      <div className="relative aspect-[2/3] w-full bg-[#0a0c12] overflow-hidden">
         {game.coverUrl ? (
           <img
             src={game.coverUrl}
             alt={game.title}
             loading="lazy"
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-102"
             onError={(e) => {
               if (game.bannerUrl && (e.currentTarget.src !== game.bannerUrl)) {
                 e.currentTarget.src = game.bannerUrl;
@@ -62,8 +62,8 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 text-slate-600">
-            <span className="text-xs font-semibold px-2 text-center">{game.title}</span>
+          <div className="w-full h-full flex items-center justify-center bg-[#11141c] text-slate-500">
+            <span className="text-xs font-medium px-2 text-center">{game.title}</span>
           </div>
         )}
 
@@ -71,7 +71,7 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
         <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
           {/* Status Badge */}
           <div
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold backdrop-blur-md border shadow-md ${statusConfig.bg}`}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${statusConfig.bg}`}
           >
             <span className={`w-1 h-1 rounded-full ${statusConfig.badgeDot}`} />
             {statusConfig.label}
@@ -79,7 +79,7 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
 
           {/* Rating Badge */}
           {game.rating > 0 && (
-            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-amber-300 text-[10px] font-bold shadow-md">
+            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/80 border border-white/10 text-amber-300 text-[10px] font-bold">
               <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
               <span>{game.rating}</span>
             </div>
@@ -88,20 +88,20 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
 
         {/* Playtime Badge Bottom Left */}
         {game.playtimeHours > 0 && (
-          <div className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-md border border-white/10 text-slate-300 text-[10px] font-medium">
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/85 border border-white/10 text-slate-300 text-[10px] font-medium">
             <Clock className="w-2.5 h-2.5 text-slate-400" />
             <span>{game.playtimeHours}h</span>
           </div>
         )}
 
-        {/* Gradient shadow for text readability */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent pointer-events-none" />
+        {/* Subtle shadow overlay for text */}
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0e111a] via-[#0e111a]/40 to-transparent pointer-events-none" />
       </div>
 
       {/* Card Info Content */}
-      <div className="p-2.5 flex flex-col flex-1 justify-between bg-slate-950/70">
+      <div className="p-2.5 flex flex-col flex-1 justify-between bg-[#11141e]">
         <div>
-          <h3 className="font-bold text-white text-xs sm:text-sm leading-tight truncate group-hover:text-purple-300 transition-colors" title={game.title}>
+          <h3 className="font-semibold text-white text-xs leading-tight truncate group-hover:text-slate-100 transition-colors" title={game.title}>
             {game.title}
           </h3>
 
@@ -111,7 +111,7 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
               {game.genres.slice(0, 2).map((genre, i) => (
                 <span
                   key={i}
-                  className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-400 font-medium"
+                  className="text-[9px] px-1.5 py-0.2 rounded bg-[#191f2e] text-slate-400 border border-[#242c40] font-medium"
                 >
                   {genre}
                 </span>
@@ -126,15 +126,15 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
 
           {/* Progress Notes */}
           {game.currentProgress && (
-            <div className="mt-1.5 text-[10px] text-slate-300 bg-slate-900/80 px-2 py-1 rounded border border-white/5 truncate">
-              <span className="text-purple-400 font-semibold mr-1">Prog:</span>
+            <div className="mt-1.5 text-[10px] text-slate-300 bg-[#161a26] px-2 py-1 rounded border border-[#242b3d] truncate">
+              <span className="text-slate-400 font-medium mr-1">Prog:</span>
               {game.currentProgress}
             </div>
           )}
 
           {/* Dropped Reason Alert */}
           {game.status === 'dropped' && game.dropReason && (
-            <div className="mt-1.5 text-[10px] bg-rose-500/10 border border-rose-500/20 text-rose-300 px-2 py-1 rounded flex items-center gap-1 truncate">
+            <div className="mt-1.5 text-[10px] bg-[#290c10] border border-[#541620] text-rose-300 px-2 py-1 rounded flex items-center gap-1 truncate">
               <AlertTriangle className="w-2.5 h-2.5 text-rose-400 shrink-0" />
               <span className="truncate">{game.dropReason}</span>
             </div>
@@ -142,11 +142,11 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
         </div>
 
         {/* Card Footer */}
-        <div className="mt-2 pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
-          <span className="text-[10px] text-slate-500 truncate max-w-[100px]">
+        <div className="mt-2 pt-1.5 border-t border-[#1e2436] flex items-center justify-between text-[10px] text-slate-400">
+          <span className="text-[10px] text-slate-500 truncate max-w-[110px]">
             {game.developer || game.platform}
           </span>
-          <div className="flex items-center gap-0.5 text-purple-400 font-medium group-hover:translate-x-0.5 transition-transform">
+          <div className="flex items-center gap-0.5 text-slate-400 group-hover:text-slate-200 transition-colors font-medium">
             <span>Detail</span>
             <ChevronRight className="w-2.5 h-2.5" />
           </div>
