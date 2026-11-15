@@ -51,3 +51,17 @@ html, body {
   border-color: #3b4663;
   transform: translateY(-2px);
 }
+
+/* Electron Frameless Window Drag Region */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar-no-drag,
+.titlebar-drag-region button,
+.titlebar-drag-region input,
+.titlebar-drag-region a,
+.titlebar-drag-region [role="button"] {
+  -webkit-app-region: no-drag;
+}

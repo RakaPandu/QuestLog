@@ -1,27 +1,32 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
+using System.Net.Sockets;
 using System.Threading;
 
 namespace QuestLogLauncher
 {
     class Program
     {
-        [STAThread]
         static void Main()
         {
             string appDir = AppDomain.CurrentDomain.BaseDirectory;
 
-            // Check if backend server is responsive
+            // Resolve node executable path
+            string nodePath = @"C:\Program Files\nodejs\node.exe";
+            if (!File.Exists(nodePath))
+            {
+                nodePath = "node";
+            }
+
+            // Check if backend server is running on port 3001
             bool isRunning = false;
             try
             {
-                using (var client = new HttpClient())
+                using (var tcp = new TcpClient())
                 {
-                    client.Timeout = TimeSpan.FromMilliseconds(600);
-                    var resp = client.GetAsync("http://localhost:3001/").Result;
-                    isRunning = resp.IsSuccessStatusCode;
+                    var ar = tcp.BeginConnect("127.0.0.1", 3001, null, null);
+                    isRunning = ar.AsyncWaitHandle.WaitOne(300);
                 }
             }
             catch
@@ -36,7 +41,7 @@ namespace QuestLogLauncher
                 {
                     var srv = new ProcessStartInfo
                     {
-                        FileName = "node",
+                        FileName = nodePath,
                         Arguments = "server.js",
                         WorkingDirectory = appDir,
                         WindowStyle = ProcessWindowStyle.Hidden,
@@ -44,35 +49,47 @@ namespace QuestLogLauncher
                         UseShellExecute = false
                     };
                     Process.Start(srv);
-                    Thread.Sleep(1200);
+                    Thread.Sleep(800);
                 }
                 catch {}
             }
 
-            // Open standalone desktop window in maximized mode
-            string edgePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
-            string chromePath = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+            // Launch Frameless Native Electron Window (Zero OS Title Bar, like Antigravity IDE)
+            string electronCli = Path.Combine(appDir, @"node_modules\electron\cli.js");
 
             var psi = new ProcessStartInfo();
-            if (File.Exists(edgePath))
+            if (File.Exists(electronCli))
             {
-                psi.FileName = edgePath;
-                psi.Arguments = "--app=http://localhost:3001/ --start-maximized";
-            }
-            else if (File.Exists(chromePath))
-            {
-                psi.FileName = chromePath;
-                psi.Arguments = "--app=http://localhost:3001/ --start-maximized";
+                psi.FileName = nodePath;
+                psi.Arguments = "\"" + electronCli + "\" .";
+                psi.WorkingDirectory = appDir;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
             }
             else
             {
-                psi.FileName = "http://localhost:3001/";
-                psi.UseShellExecute = true;
+                // Fallback to Edge app mode if Electron is ever missing
+                string edgePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
+                if (File.Exists(edgePath))
+                {
+                    psi.FileName = edgePath;
+                    psi.Arguments = "--app=http://localhost:3001/ --start-maximized";
+                }
+                else
+                {
+                    psi.FileName = "http://localhost:3001/";
+                    psi.UseShellExecute = true;
+                }
             }
 
             try
             {
-                Process.Start(psi);
+                var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    proc.WaitForExit();
+                }
             }
             catch {}
         }

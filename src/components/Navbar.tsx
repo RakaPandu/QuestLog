@@ -64,14 +64,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isWindowMaximized, setIsWindowMaximized] = useState<boolean>(false);
   const navContainerRef = useRef<HTMLDivElement>(null);
 
-  // Monitor fullscreen state
+  // Monitor fullscreen and Electron window states
   useEffect(() => {
     const handleFsChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener('fullscreenchange', handleFsChange);
+
+    const api = (window as any).electronAPI;
+    if (api) {
+      api.isMaximized().then((max: boolean) => setIsWindowMaximized(max)).catch(() => {});
+      api.onWindowStateChange((max: boolean) => setIsWindowMaximized(max));
+    }
+
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
@@ -86,22 +94,33 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, []);
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+  const handleMaximizeToggle = () => {
+    const api = (window as any).electronAPI;
+    if (api) {
+      api.maximize();
     } else {
-      document.exitFullscreen().catch(() => {});
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
     }
   };
 
   const handleMinimize = () => {
-    if (document.fullscreenElement) {
+    const api = (window as any).electronAPI;
+    if (api) {
+      api.minimize();
+    } else if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
   };
 
   const handleClose = () => {
-    if (window.confirm('Tutup QuestLog?')) {
+    const api = (window as any).electronAPI;
+    if (api) {
+      api.close();
+    } else if (window.confirm('Tutup QuestLog?')) {
       window.close();
     }
   };
@@ -121,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       className="w-full select-none sticky top-0 z-40 bg-[#090b10] border-b border-[#161a24] text-slate-300"
     >
       {/* ROW 1: Antigravity IDE Title Bar (Menus & Window Controls) */}
-      <div className="h-7 px-2.5 flex items-center justify-between text-xs border-b border-[#141722] bg-[#07090e]">
+      <div className="titlebar-drag-region h-7 px-2.5 flex items-center justify-between text-xs border-b border-[#141722] bg-[#07090e]">
         {/* Left: Native IDE Menus */}
         <div className="flex items-center gap-0.5">
           {/* Menu: QuestLog */}
@@ -307,7 +326,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="my-1 border-t border-[#1e2538]" />
                 <button
                   onClick={() => {
-                    toggleFullscreen();
+                    handleMaximizeToggle();
                     setOpenMenu(null);
                   }}
                   className="w-full px-3 py-1.5 text-left hover:bg-[#1b2234] hover:text-white flex items-center justify-between text-slate-300"
@@ -382,17 +401,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Minimal Antigravity Window Controls */}
           <button
             onClick={handleMinimize}
-            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#1b2131] transition-colors"
+            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#1b2131] transition-colors titlebar-no-drag"
             title="Minimize"
           >
             <Minus className="w-3 h-3" />
           </button>
           <button
-            onClick={toggleFullscreen}
-            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#1b2131] transition-colors"
-            title={isFullscreen ? 'Restore Down' : 'Maximize'}
+            onClick={handleMaximizeToggle}
+            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#1b2131] transition-colors titlebar-no-drag"
+            title={isWindowMaximized || isFullscreen ? 'Restore Down' : 'Maximize'}
           >
-            {isFullscreen ? (
+            {isWindowMaximized || isFullscreen ? (
               <Maximize2 className="w-2.5 h-2.5" />
             ) : (
               <Square className="w-2.5 h-2.5" />
@@ -400,7 +419,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             onClick={handleClose}
-            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-600 transition-colors"
+            className="w-8 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-600 transition-colors titlebar-no-drag"
             title="Close"
           >
             <X className="w-3 h-3" />
