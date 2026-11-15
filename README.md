@@ -17,10 +17,10 @@ Aplikasi ini terhubung langsung ke **Steam Store API & Steam CDN** untuk menarik
 
 ## 📸 Preview Tampilan
 
-| Dashboard Utama | Detail Game & Alasan Drop |
-| :---: | :---: |
-| ![QuestLog Main Dashboard](screenshots/preview.png) | ![QuestLog Detail Modal](screenshots/modal_preview.png) |
-| *Dashboard katalog game dengan status visual, jam main & rating* | *Modal detail game: pelacak progress, rating, dan alasan game di-drop* |
+| Dashboard Utama | Detail Game & Alasan Drop | Cadangan & Pemulihan Data |
+| :---: | :---: | :---: |
+| ![QuestLog Main Dashboard](screenshots/preview.png) | ![QuestLog Detail Modal](screenshots/modal_preview.png) | ![QuestLog Backup Modal](screenshots/backup_preview.png) |
+| *Dashboard katalog game dengan status visual, jam main & rating* | *Modal detail game: pelacak progress, rating, dan alasan game di-drop* | *Modal cadangan & pemulihan data: ekspor/impor JSON dan riwayat snapshot* |
 
 ---
 
