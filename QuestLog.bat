@@ -14,11 +14,11 @@ if %ERRORLEVEL% NEQ 0 (
     timeout /t 2 /nobreak >nul
 )
 
-:: Launch standalone desktop application window via Edge App mode
+:: Launch standalone desktop window in maximized / windowed fullscreen mode
 if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
-    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://localhost:3001/ --window-size=1360,860
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://localhost:3001/ --start-maximized
 ) else if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
-    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:3001/ --window-size=1360,860
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:3001/ --start-maximized
 ) else (
     start http://localhost:3001/
 )
