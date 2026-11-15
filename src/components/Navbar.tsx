@@ -1,11 +1,12 @@
 import React from 'react';
-import { Gamepad2, Plus, BarChart2, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Gamepad2, Plus, BarChart2, RefreshCw, ZoomIn, ZoomOut, Database } from 'lucide-react';
 import type { GameStats } from '../types/game';
 
 interface NavbarProps {
   stats: GameStats | null;
   onOpenAddModal: () => void;
   onOpenStatsModal: () => void;
+  onOpenBackupModal: () => void;
   onRefresh: () => void;
   isLoading: boolean;
   zoomScale: number;
@@ -18,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   stats,
   onOpenAddModal,
   onOpenStatsModal,
+  onOpenBackupModal,
   onRefresh,
   isLoading,
   zoomScale,
@@ -117,6 +119,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <BarChart2 className="w-3.5 h-3.5 text-slate-400" />
             <span className="hidden sm:inline">Stats</span>
+          </button>
+
+          <button
+            onClick={onOpenBackupModal}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white bg-[#161a26] hover:bg-[#1f2538] border border-[#262e42] transition-colors"
+            title="Cadangan & Pemulihan Data"
+          >
+            <Database className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">Backup</span>
           </button>
 
           <button

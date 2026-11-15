@@ -1,4 +1,4 @@
-import type { Game, SteamSearchResult, SteamGameDetails, GameStats } from '../types/game';
+import type { Game, SteamSearchResult, SteamGameDetails, GameStats, BackupSnapshot, ExportBackupData } from '../types/game';
 
 const API_BASE = '/api';
 
@@ -53,6 +53,39 @@ export const api = {
   async getStats(): Promise<GameStats> {
     const res = await fetch(`${API_BASE}/stats`);
     if (!res.ok) throw new Error('Failed to fetch stats');
+    return res.json();
+  },
+
+  async exportBackup(): Promise<ExportBackupData> {
+    const res = await fetch(`${API_BASE}/backup/export`);
+    if (!res.ok) throw new Error('Failed to export backup');
+    return res.json();
+  },
+
+  async importBackup(games: any[], mode: 'replace' | 'merge' = 'replace'): Promise<{ success: boolean; count: number }> {
+    const res = await fetch(`${API_BASE}/backup/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ games, mode }),
+    });
+    if (!res.ok) throw new Error('Failed to import backup');
+    return res.json();
+  },
+
+  async getSnapshots(): Promise<BackupSnapshot[]> {
+    const res = await fetch(`${API_BASE}/backup/snapshots`);
+    if (!res.ok) throw new Error('Failed to fetch backup snapshots');
+    const data = await res.json();
+    return data.snapshots || [];
+  },
+
+  async restoreSnapshot(filename: string): Promise<{ success: boolean; count: number }> {
+    const res = await fetch(`${API_BASE}/backup/restore-snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    if (!res.ok) throw new Error('Failed to restore snapshot');
     return res.json();
   },
 };

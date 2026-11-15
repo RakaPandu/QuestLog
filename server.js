@@ -9,12 +9,25 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'games.json');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const DIST_DIR = path.join(__dirname, 'dist');
 
-// Ensure data directory exists
+// Ensure data & backup directories exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+// Ensure initial baseline snapshot exists
+try {
+  const initialData = readGames();
+  const snaps = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.json'));
+  if (snaps.length === 0 && initialData.length > 0) {
+    createSnapshot('baseline', initialData);
+  }
+} catch {}
 
 // Initial seed data if database file does not exist
 const INITIAL_GAMES = [
@@ -96,10 +109,37 @@ const INITIAL_GAMES = [
   }
 ];
 
+// Helper to create automated snapshots
+function createSnapshot(reason = 'auto', data = null) {
+  try {
+    const games = data || readGames();
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+    const filename = `snapshot_${ts}_${reason}.json`;
+    const filepath = path.join(BACKUP_DIR, filename);
+
+    fs.writeFileSync(filepath, JSON.stringify(games, null, 2), 'utf-8');
+
+    // Clean up older snapshots (keep maximum 20 latest snapshots)
+    const files = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.json'));
+    if (files.length > 20) {
+      files.sort();
+      const toRemove = files.slice(0, files.length - 20);
+      for (const rem of toRemove) {
+        fs.unlinkSync(path.join(BACKUP_DIR, rem));
+      }
+    }
+  } catch (err) {
+    console.error('Error creating snapshot:', err);
+  }
+}
+
 // Helper to read database
 function readGames() {
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_GAMES, null, 2), 'utf-8');
+    createSnapshot('initial', INITIAL_GAMES);
     return INITIAL_GAMES;
   }
   try {
@@ -111,9 +151,17 @@ function readGames() {
   }
 }
 
-// Helper to write database
+let lastSnapshotTime = 0;
+// Helper to write database with automatic snapshot protection
 function writeGames(games) {
   fs.writeFileSync(DB_FILE, JSON.stringify(games, null, 2), 'utf-8');
+
+  // Throttle auto snapshot to at most once every 30 seconds
+  const now = Date.now();
+  if (now - lastSnapshotTime > 30000) {
+    createSnapshot('auto', games);
+    lastSnapshotTime = now;
+  }
 }
 
 // Check valid image on Steam CDN
@@ -131,12 +179,13 @@ async function findValidImage(candidates, fallback) {
 }
 
 // Send JSON response
-function sendJson(res, statusCode, data) {
+function sendJson(res, statusCode, data, headers = {}) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    ...headers,
   });
   res.end(JSON.stringify(data));
 }
@@ -404,6 +453,160 @@ const server = http.createServer(async (req, res) => {
         totalPlaytime,
         completionRate,
       });
+    }
+
+    // 8. GET /api/backup/export
+    if (req.method === 'GET' && pathname === '/api/backup/export') {
+      const games = readGames();
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      const backupData = {
+        app: 'QuestLog',
+        version: 1,
+        exportedAt: d.toISOString(),
+        totalGames: games.length,
+        games,
+      };
+
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="questlog-backup-${dateStr}.json"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+      return res.end(JSON.stringify(backupData, null, 2));
+    }
+
+    // 9. POST /api/backup/import
+    if (req.method === 'POST' && pathname === '/api/backup/import') {
+      const payload = await parseBody(req);
+      const incomingGames = Array.isArray(payload.games) ? payload.games : (Array.isArray(payload) ? payload : null);
+
+      if (!incomingGames) {
+        return sendJson(res, 400, { error: 'Invalid backup format. Expected array of games.' });
+      }
+
+      const mode = payload.mode || 'replace'; // 'replace' or 'merge'
+      const currentGames = readGames();
+
+      // Create safety snapshot before altering data
+      createSnapshot('before-import', currentGames);
+
+      let finalGames = [];
+      if (mode === 'replace') {
+        finalGames = incomingGames.map((g, idx) => ({
+          id: g.id || `game_${Date.now()}_${idx}`,
+          steamAppId: g.steamAppId || null,
+          title: g.title || 'Untitled Game',
+          status: g.status || 'plan_to_play',
+          coverUrl: g.coverUrl || '',
+          bannerUrl: g.bannerUrl || '',
+          genres: g.genres || [],
+          releaseDate: g.releaseDate || '',
+          developer: g.developer || '',
+          playtimeHours: Number(g.playtimeHours) || 0,
+          currentProgress: g.currentProgress || '',
+          dropReason: g.dropReason || '',
+          rating: Number(g.rating) || 0,
+          notes: g.notes || '',
+          platform: g.platform || 'PC',
+          createdAt: g.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }));
+      } else {
+        // Merge mode
+        finalGames = [...currentGames];
+        for (const item of incomingGames) {
+          const existingIdx = finalGames.findIndex(g => 
+            (g.steamAppId && item.steamAppId && String(g.steamAppId) === String(item.steamAppId)) ||
+            (g.title && item.title && g.title.toLowerCase() === item.title.toLowerCase())
+          );
+          if (existingIdx !== -1) {
+            finalGames[existingIdx] = {
+              ...finalGames[existingIdx],
+              ...item,
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            finalGames.push({
+              id: item.id || `game_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              steamAppId: item.steamAppId || null,
+              title: item.title,
+              status: item.status || 'plan_to_play',
+              coverUrl: item.coverUrl || '',
+              bannerUrl: item.bannerUrl || '',
+              genres: item.genres || [],
+              releaseDate: item.releaseDate || '',
+              developer: item.developer || '',
+              playtimeHours: Number(item.playtimeHours) || 0,
+              currentProgress: item.currentProgress || '',
+              dropReason: item.dropReason || '',
+              rating: Number(item.rating) || 0,
+              notes: item.notes || '',
+              platform: item.platform || 'PC',
+              createdAt: item.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      writeGames(finalGames);
+      return sendJson(res, 200, { success: true, count: finalGames.length, mode });
+    }
+
+    // 10. GET /api/backup/snapshots
+    if (req.method === 'GET' && pathname === '/api/backup/snapshots') {
+      if (!fs.existsSync(BACKUP_DIR)) {
+        return sendJson(res, 200, { snapshots: [] });
+      }
+
+      const files = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.json'));
+      const snapshots = files.map(file => {
+        const filePath = path.join(BACKUP_DIR, file);
+        const stats = fs.statSync(filePath);
+        let count = 0;
+        try {
+          const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          count = Array.isArray(content) ? content.length : (content.games ? content.games.length : 0);
+        } catch {}
+
+        return {
+          filename: file,
+          createdAt: stats.mtime.toISOString(),
+          sizeBytes: stats.size,
+          gameCount: count,
+        };
+      });
+
+      // Sort newest first
+      snapshots.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return sendJson(res, 200, { snapshots });
+    }
+
+    // 11. POST /api/backup/restore-snapshot
+    if (req.method === 'POST' && pathname === '/api/backup/restore-snapshot') {
+      const payload = await parseBody(req);
+      const filename = payload.filename;
+
+      if (!filename || filename.includes('..') || !filename.endsWith('.json')) {
+        return sendJson(res, 400, { error: 'Invalid snapshot filename' });
+      }
+
+      const filePath = path.join(BACKUP_DIR, filename);
+      if (!fs.existsSync(filePath)) {
+        return sendJson(res, 404, { error: 'Snapshot not found' });
+      }
+
+      const currentGames = readGames();
+      createSnapshot('before-restore', currentGames);
+
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const restored = Array.isArray(content) ? content : (content.games ? content.games : []);
+
+      writeGames(restored);
+      return sendJson(res, 200, { success: true, count: restored.length, filename });
     }
 
     // Fallback: static files

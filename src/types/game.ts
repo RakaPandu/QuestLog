@@ -52,3 +52,18 @@ export interface GameStats {
   totalPlaytime: number;
   completionRate: number;
 }
+
+export interface BackupSnapshot {
+  filename: string;
+  createdAt: string;
+  sizeBytes: number;
+  gameCount: number;
+}
+
+export interface ExportBackupData {
+  app: string;
+  version: number;
+  exportedAt: string;
+  totalGames: number;
+  games: Game[];
+}

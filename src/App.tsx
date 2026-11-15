@@ -6,6 +6,7 @@ import { GameCard } from './components/GameCard';
 import { AddGameModal } from './components/AddGameModal';
 import { GameDetailModal } from './components/GameDetailModal';
 import { StatsModal } from './components/StatsModal';
+import { BackupModal } from './components/BackupModal';
 import type { Game, GameStats, GameStatus } from './types/game';
 import { api } from './services/api';
 import { Gamepad2, Plus, AlertCircle } from 'lucide-react';
@@ -106,6 +107,7 @@ export function App() {
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState<boolean>(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
 
@@ -207,6 +209,7 @@ export function App() {
         stats={stats}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenStatsModal={() => setIsStatsModalOpen(true)}
+        onOpenBackupModal={() => setIsBackupModalOpen(true)}
         onRefresh={loadData}
         isLoading={isLoading}
         zoomScale={zoomScale}
@@ -313,6 +316,13 @@ export function App() {
         onClose={() => setIsStatsModalOpen(false)}
         stats={stats}
         games={games}
+      />
+
+      <BackupModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        onDataRestored={loadData}
+        totalGames={games.length}
       />
     </div>
   );

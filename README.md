@@ -52,6 +52,11 @@ Aplikasi ini terhubung langsung ke **Steam Store API & Steam CDN** untuk menarik
   - Berjalan sebagai jendela desktop mandiri tanpa address bar atau tabs browser.
   - Sangat hemat memori (RAM) dibandingkan Electron berkat arsitektur lokal yang ramping.
 
+- 💾 **Cadangan & Pemulihan Data (Backup & Recovery)**:
+  - **Ekspor Mandiri**: Unduh salinan database katalog game dalam format JSON sekali klik untuk dipindahkan ke PC lain atau disimpan di cloud drive.
+  - **Impor & Pemulihan**: Pulihkan data backup dengan opsi *Replace* (mengganti seluruh data) atau *Merge* (menggabungkan data tanpa menghapus yang ada).
+  - **Snapshot Otomatis Lokal**: Sistem otomatis mencatat snapshot cadangan di PC sebelum perubahan besar dilakukan, memungkinkan pemulihan instan jika terjadi kesalahan.
+
 - 💾 **Data Milik Sendiri (Offline-First)**:
   - Seluruh data game tersimpan rapi dan aman di komputer kamu sendiri (`data/games.json`), tanpa ketergantungan pada server pihak ketiga.
 
