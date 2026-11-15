@@ -29,85 +29,8 @@ try {
   }
 } catch {}
 
-// Initial seed data if database file does not exist
-const INITIAL_GAMES = [
-  {
-    id: "steam_1245620",
-    steamAppId: "1245620",
-    title: "ELDEN RING",
-    status: "playing",
-    coverUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/library_600x900.jpg",
-    bannerUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/header.jpg",
-    genres: ["Action", "RPG", "Open World"],
-    releaseDate: "24 Feb, 2022",
-    developer: "FromSoftware Inc.",
-    playtimeHours: 64,
-    currentProgress: "Exploring Altus Plateau & Volcano Manor",
-    dropReason: "",
-    rating: 9.5,
-    notes: "Build: Dex/Arcane with Rivers of Blood & Bloodhound's Step. Bosses defeated: Margit, Godrick, Renalla, Radahn.",
-    platform: "PC (Steam)",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: "steam_1091500",
-    steamAppId: "1091500",
-    title: "Cyberpunk 2077",
-    status: "completed",
-    coverUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/library_600x900.jpg",
-    bannerUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/header.jpg",
-    genres: ["RPG", "Open World", "Sci-Fi"],
-    releaseDate: "9 Dec, 2020",
-    developer: "CD PROJEKT RED",
-    playtimeHours: 85,
-    currentProgress: "Story completed + Phantom Liberty DLC finished (The Sun ending)",
-    dropReason: "",
-    rating: 9.0,
-    notes: "Incredible story and night city atmosphere. Phantom Liberty ending was heartbreaking.",
-    platform: "PC (Steam)",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: "steam_2358720",
-    steamAppId: "2358720",
-    title: "Black Myth: Wukong",
-    status: "plan_to_play",
-    coverUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2358720/library_600x900.jpg",
-    bannerUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2358720/header.jpg",
-    genres: ["Action", "RPG", "Souls-like"],
-    releaseDate: "19 Aug, 2024",
-    developer: "Game Science",
-    playtimeHours: 0,
-    currentProgress: "In Backlog - waiting for weekend marathon session",
-    dropReason: "",
-    rating: 0,
-    notes: "Heard the combat and visual animations are mindblowing.",
-    platform: "PC (Steam)",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: "steam_1145360",
-    steamAppId: "1145360",
-    title: "Hades",
-    status: "dropped",
-    coverUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1145360/library_600x900.jpg",
-    bannerUrl: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1145360/header.jpg",
-    genres: ["Roguelike", "Action", "Indie"],
-    releaseDate: "17 Sep, 2020",
-    developer: "Supergiant Games",
-    playtimeHours: 12,
-    currentProgress: "Elysium - Stygian Blade runs",
-    dropReason: "Format roguelike kurang cocok dengan selera saat ini, frustasi mengulang dari awal setiap mati.",
-    rating: 7.5,
-    notes: "Artwork dan soundtrack juara, tapi gameplay repetitif membuat bosan setelah 10 jam.",
-    platform: "PC (Steam)",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+// Initial seed data (empty by default for user's personal tracking)
+const INITIAL_GAMES = [];
 
 // Helper to create automated snapshots
 function createSnapshot(reason = 'auto', data = null) {
