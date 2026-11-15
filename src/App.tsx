@@ -22,6 +22,44 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortOption>('updated');
 
+  // Tab History navigation (Back / Forward)
+  const [tabHistory, setTabHistory] = useState<FilterTab[]>(['all']);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+
+  const handleTabChange = useCallback((newTab: FilterTab) => {
+    setActiveTab(newTab);
+    setTabHistory(prev => {
+      const nextHistory = prev.slice(0, historyIndex + 1);
+      nextHistory.push(newTab);
+      return nextHistory;
+    });
+    setHistoryIndex(prev => prev + 1);
+  }, [historyIndex]);
+
+  const handleGoBack = useCallback(() => {
+    if (historyIndex > 0) {
+      const nextIdx = historyIndex - 1;
+      setHistoryIndex(nextIdx);
+      setActiveTab(tabHistory[nextIdx]);
+    }
+  }, [historyIndex, tabHistory]);
+
+  const handleGoForward = useCallback(() => {
+    if (historyIndex < tabHistory.length - 1) {
+      const nextIdx = historyIndex + 1;
+      setHistoryIndex(nextIdx);
+      setActiveTab(tabHistory[nextIdx]);
+    }
+  }, [historyIndex, tabHistory]);
+
+  const focusSearch = useCallback(() => {
+    const el = document.getElementById('questlog-search-input') as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, []);
+
   // Zoom Scale state (Strict range: 100% min to 125% max)
   const [zoomScale, setZoomScale] = useState<number>(() => {
     const saved = localStorage.getItem('questlog_zoom');
@@ -65,6 +103,9 @@ export function App() {
         } else if (e.key === '0' || e.code === 'Numpad0') {
           e.preventDefault();
           handleZoomReset();
+        } else if (e.key === 'f' || e.key === 'F') {
+          e.preventDefault();
+          focusSearch();
         }
       }
     };
@@ -204,9 +245,15 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#0c0e14] text-slate-100 flex flex-col w-full overflow-x-hidden selection:bg-slate-700 selection:text-white">
-      {/* Top Navbar */}
+      {/* Top Seamless Navbar (Antigravity IDE Style) */}
       <Navbar
         stats={stats}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        canGoBack={historyIndex > 0}
+        canGoForward={historyIndex < tabHistory.length - 1}
+        onGoBack={handleGoBack}
+        onGoForward={handleGoForward}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenStatsModal={() => setIsStatsModalOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
@@ -216,6 +263,7 @@ export function App() {
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onZoomReset={handleZoomReset}
+        onFocusSearch={focusSearch}
       />
 
       {/* Main Container */}
@@ -239,7 +287,7 @@ export function App() {
         {/* Status Category Tabs & Search/Sort */}
         <StatusTabs
           currentTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
           counts={tabCounts}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}

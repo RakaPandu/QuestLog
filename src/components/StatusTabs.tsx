@@ -72,8 +72,9 @@ export const StatusTabs: React.FC<StatusTabsProps> = ({
         <div className="relative w-full sm:w-72">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
+            id="questlog-search-input"
             type="text"
-            placeholder="Cari judul atau genre game..."
+            placeholder="Cari judul atau genre game... (Ctrl+F)"
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 bg-[#12151f] border border-[#202738] rounded-md text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3d4b6c] transition-colors"
