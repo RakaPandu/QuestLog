@@ -377,18 +377,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Center: Command Center / Window Title */}
-        <div
-          onClick={onFocusSearch}
-          className="hidden md:flex items-center gap-2 px-2.5 py-0.5 rounded bg-[#10131d] hover:bg-[#161a27] border border-[#1b2233] text-[11px] text-slate-400 cursor-pointer transition-colors max-w-sm truncate"
-          title="Klik untuk mencari game (Ctrl + F)"
-        >
-          <Search className="w-3 h-3 text-slate-500 shrink-0" />
-          <span className="truncate">QuestLog — Steam Tracker & Library</span>
-          <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono border border-slate-700/60 ml-auto">
-            Ctrl+F
-          </span>
-        </div>
+        {/* Center drag area */}
+        <div className="flex-1 h-full" />
 
         {/* Right: Steam Status & Antigravity Window Controls */}
         <div className="flex items-center h-full">
