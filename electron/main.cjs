@@ -33,8 +33,9 @@ function ensureServerRunning(callback) {
     }
 
     const serverScript = path.join(__dirname, '../server.js');
-    serverProcess = spawn('node', [serverScript], {
+    serverProcess = spawn(process.execPath, [serverScript], {
       cwd: path.join(__dirname, '..'),
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       stdio: 'ignore',
       windowsHide: true,
       shell: false

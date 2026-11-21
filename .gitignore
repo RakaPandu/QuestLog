@@ -15,6 +15,7 @@ dist-ssr
 data/config.json
 data/backups/
 data/imgcache/
+release/
 
 # Editor directories and files
 .vscode/*

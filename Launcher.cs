@@ -34,8 +34,14 @@ namespace QuestLogLauncher
                 isRunning = false;
             }
 
-            // Start backend server if not running
-            if (!isRunning)
+            // 1. Packaged / Portable Mode: runtime\electron.exe loads runtime\resources\app automatically
+            string packagedElectron = Path.Combine(appDir, @"runtime\electron.exe");
+            // 2. Repo / Dev Mode: node_modules\electron\dist\electron.exe .
+            string devElectronExe = Path.Combine(appDir, @"node_modules\electron\dist\electron.exe");
+            string electronCli = Path.Combine(appDir, @"node_modules\electron\cli.js");
+
+            // Start backend server manually only if Electron binary is not handling it via main.cjs
+            if (!isRunning && !File.Exists(packagedElectron) && !File.Exists(devElectronExe))
             {
                 try
                 {
@@ -54,11 +60,21 @@ namespace QuestLogLauncher
                 catch {}
             }
 
-            // Launch Frameless Native Electron Window (Zero OS Title Bar, like Antigravity IDE)
-            string electronCli = Path.Combine(appDir, @"node_modules\electron\cli.js");
-
             var psi = new ProcessStartInfo();
-            if (File.Exists(electronCli))
+            if (File.Exists(packagedElectron))
+            {
+                psi.FileName = packagedElectron;
+                psi.WorkingDirectory = Path.Combine(appDir, @"runtime\resources\app");
+                psi.UseShellExecute = false;
+            }
+            else if (File.Exists(devElectronExe))
+            {
+                psi.FileName = devElectronExe;
+                psi.Arguments = ".";
+                psi.WorkingDirectory = appDir;
+                psi.UseShellExecute = false;
+            }
+            else if (File.Exists(electronCli))
             {
                 psi.FileName = nodePath;
                 psi.Arguments = "\"" + electronCli + "\" .";

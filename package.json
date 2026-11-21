@@ -1,7 +1,7 @@
 {
   "name": "questlog",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,6 +10,7 @@
     "server": "node server.js",
     "electron": "electron ./electron/main.cjs",
     "build": "tsc -b && vite build",
+    "release": "npm run build && node scripts/build-release.cjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
