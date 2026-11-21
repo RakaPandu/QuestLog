@@ -8,11 +8,32 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Google Gemini](https://img.shields.io/badge/Gemini_API_v1-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![Steam](https://img.shields.io/badge/Steam_API-171a21?style=for-the-badge&logo=steam&logoColor=white)](https://store.steampowered.com/)
+[![GitHub Release](https://img.shields.io/github/v/release/RakaPandu/QuestLog?style=for-the-badge&label=Release&color=10b981)](https://github.com/RakaPandu/QuestLog/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 **QuestLog** adalah aplikasi desktop modern untuk mencatat, mengatur, dan memantau progres game yang sedang kamu mainkan (*Playing*), rencana game yang ingin dimainkan (*Backlog / Plan to Play*), game yang sudah tamat (*Completed*), serta game yang kamu putuskan untuk berhenti mainkan (**_Dropped_**) beserta alasan spesifiknya.
 
 Aplikasi ini terhubung langsung ke **Steam Store API & Steam CDN** untuk menarik cover poster vertikal resolusi tinggi (`600x900`), banner header, genre, pengembang, tanggal rilis, dan skor Metacritic secara instan.
+
+---
+
+## 📥 Download Aplikasi (Windows Desktop — Siap Pakai)
+
+Tidak perlu menginstal Node.js, npm, atau Git! Langsung unduh installer `.exe` atau versi portable `.zip` dari halaman **[GitHub Releases](https://github.com/RakaPandu/QuestLog/releases/latest)**:
+
+<p align="left">
+  <a href="https://github.com/RakaPandu/QuestLog/releases/latest/download/QuestLog-Setup-v1.0.0.exe">
+    <img src="https://img.shields.io/badge/Download_Installer-QuestLog--Setup--v1.0.0.exe-38bdf8?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows Installer EXE" />
+  </a>
+  <a href="https://github.com/RakaPandu/QuestLog/releases/latest/download/QuestLog-Portable-v1.0.0.zip">
+    <img src="https://img.shields.io/badge/Download_Portable-QuestLog--Portable--v1.0.0.zip-a855f7?style=for-the-badge&logo=files&logoColor=white" alt="Download Windows Portable ZIP" />
+  </a>
+</p>
+
+| Paket Unduhan | Format | Cara Pakai |
+| :--- | :---: | :--- |
+| **[QuestLog-Setup-v1.0.0.exe](https://github.com/RakaPandu/QuestLog/releases/latest/download/QuestLog-Setup-v1.0.0.exe)** *(Disarankan)* | `.exe` Installer | Klik 2x file `.exe` → klik **Install Sekarang**. Otomatis membuat shortcut **QuestLog** di **Desktop** & **Start Menu**. |
+| **[QuestLog-Portable-v1.0.0.zip](https://github.com/RakaPandu/QuestLog/releases/latest/download/QuestLog-Portable-v1.0.0.zip)** | `.zip` Portable | Ekstrak `.zip` di folder mana saja → jalankan `QuestLog.exe` (atau klik `Buat-Shortcut-Desktop.bat` untuk membuat shortcut). |
 
 ---
 
