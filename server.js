@@ -612,8 +612,28 @@ function scanLocalSteamLibrary() {
         if (d.isDirectory() && /^\d+$/.test(d.name)) {
           const appId = d.name;
           const info = appInfoMap.get(appId);
-          // Include if it has recorded playtime in localconfig.vdf OR is a known game in appinfo.vdf with cached library assets
-          if (info && info.type === 'game' && (playtimes[appId] || stPluginMap.has(appId))) {
+          // Include if it is a known game in appinfo.vdf with cached library assets
+          if (info && info.type === 'game') {
+            addDiscoveredGame(appId, info.title, false, 0);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Scan userdata/<userId>/config/librarycache/*.json for owned games with cached metadata
+  const userdataDir = path.join(steamRoot, 'userdata');
+  if (fs.existsSync(userdataDir)) {
+    try {
+      for (const u of fs.readdirSync(userdataDir)) {
+        const userCacheDir = path.join(userdataDir, u, 'config', 'librarycache');
+        if (!fs.existsSync(userCacheDir)) continue;
+        for (const f of fs.readdirSync(userCacheDir)) {
+          const m = f.match(/^(\d+)\.json$/);
+          if (!m || m[1] === '0') continue;
+          const appId = m[1];
+          const info = appInfoMap.get(appId);
+          if (info && info.type === 'game') {
             addDiscoveredGame(appId, info.title, false, 0);
           }
         }
@@ -1086,7 +1106,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         total,
         byStatus,
-        totalPlaytime,
+        totalPlaytime: Math.round(totalPlaytime * 10) / 10,
         completionRate,
       });
     }

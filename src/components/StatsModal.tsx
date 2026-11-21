@@ -41,8 +41,10 @@ export const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, 
             <span className="text-[11px] text-slate-400 mt-0.5">Total Game</span>
           </div>
 
-          <div className="p-3 rounded-lg bg-[#0e111a] border border-[#1e2436] flex flex-col items-center justify-center text-center">
-            <span className="text-2xl font-bold text-sky-400">{stats.totalPlaytime}h</span>
+          <div className="p-3 rounded-lg bg-[#0e111a] border border-[#1e2436] flex flex-col items-center justify-center text-center min-w-0 overflow-hidden">
+            <span className="text-2xl font-bold text-sky-400 truncate max-w-full">
+              {Number(Number(stats.totalPlaytime || 0).toFixed(1)).toLocaleString('id-ID')}h
+            </span>
             <span className="text-[11px] text-slate-400 mt-0.5">Total Jam Bermain</span>
           </div>
 
