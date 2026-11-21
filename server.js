@@ -6,6 +6,7 @@ import net from 'node:net';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
+import sharp from 'sharp';
 
 // Force IPv4 first on Windows to avoid 25-30s IPv6 connection stalls to Google APIs
 dns.setDefaultResultOrder('ipv4first');
@@ -332,14 +333,17 @@ function scanLocalSteamLibrary() {
           suggestedStatus = 'playing';
         }
 
+        const localCover = findLocalSteamImageFile(appId, 'cover', steamRoot);
+        const localBanner = findLocalSteamImageFile(appId, 'banner', steamRoot);
         const steamCdn = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}`;
+
         discovered.push({
           steamAppId: appId,
           title,
           playtimeHours,
           lastPlayed: lastPlayedTs > 0 ? new Date(lastPlayedTs * 1000).toISOString() : null,
-          coverUrl: `${steamCdn}/library_600x900.jpg`,
-          bannerUrl: `${steamCdn}/header.jpg`,
+          coverUrl: localCover ? `/api/steam/local-image/${appId}/cover` : `${steamCdn}/library_600x900.jpg`,
+          bannerUrl: localBanner ? `/api/steam/local-image/${appId}/banner` : `${steamCdn}/header.jpg`,
           suggestedStatus,
           alreadyInLibrary,
         });
@@ -354,6 +358,158 @@ function scanLocalSteamLibrary() {
     totalFound: discovered.length,
     games: discovered,
   };
+}
+
+// Resolve local cached Steam image (supports both legacy library_600x900.jpg and new SHA1-hashed folders)
+function findLocalSteamImageFile(appId, type = 'cover', customSteamRoot = null) {
+  if (!appId) return null;
+  const steamRoot = customSteamRoot || detectSteamRoot();
+  if (!steamRoot) return null;
+
+  const subDir = path.join(steamRoot, 'appcache', 'librarycache', String(appId));
+  if (!fs.existsSync(subDir)) return null;
+
+  try {
+    const entries = fs.readdirSync(subDir, { withFileTypes: true });
+    const subDirs = entries.filter(e => e.isDirectory()).map(e => path.join(subDir, e.name));
+
+    if (type === 'cover') {
+      const direct600 = path.join(subDir, 'library_600x900.jpg');
+      if (fs.existsSync(direct600)) return direct600;
+      for (const d of subDirs) {
+        if (fs.existsSync(path.join(d, 'library_capsule.jpg'))) return path.join(d, 'library_capsule.jpg');
+        if (fs.existsSync(path.join(d, 'library_600x900.jpg'))) return path.join(d, 'library_600x900.jpg');
+      }
+      const directHeader = path.join(subDir, 'library_header.jpg');
+      if (fs.existsSync(directHeader)) return directHeader;
+      if (fs.existsSync(path.join(subDir, 'header.jpg'))) return path.join(subDir, 'header.jpg');
+      for (const d of subDirs) {
+        if (fs.existsSync(path.join(d, 'library_header.jpg'))) return path.join(d, 'library_header.jpg');
+        if (fs.existsSync(path.join(d, 'header.jpg'))) return path.join(d, 'header.jpg');
+      }
+    } else {
+      const directHeader = path.join(subDir, 'header.jpg');
+      const directLibHeader = path.join(subDir, 'library_header.jpg');
+      if (fs.existsSync(directHeader)) return directHeader;
+      if (fs.existsSync(directLibHeader)) return directLibHeader;
+      for (const d of subDirs) {
+        if (fs.existsSync(path.join(d, 'library_header.jpg'))) return path.join(d, 'library_header.jpg');
+        if (fs.existsSync(path.join(d, 'header.jpg'))) return path.join(d, 'header.jpg');
+      }
+      const directHero = path.join(subDir, 'library_hero.jpg');
+      if (fs.existsSync(directHero)) return directHero;
+      for (const d of subDirs) {
+        if (fs.existsSync(path.join(d, 'library_hero.jpg'))) return path.join(d, 'library_hero.jpg');
+      }
+      const direct600 = path.join(subDir, 'library_600x900.jpg');
+      if (fs.existsSync(direct600)) return direct600;
+      for (const d of subDirs) {
+        if (fs.existsSync(path.join(d, 'library_capsule.jpg'))) return path.join(d, 'library_capsule.jpg');
+      }
+    }
+
+    const anyImg = entries.find(
+      e => e.isFile() && (e.name.endsWith('.jpg') || e.name.endsWith('.png')) && !e.name.includes('blur') && !e.name.includes('logo')
+    );
+    return anyImg ? path.join(subDir, anyImg.name) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Compute smart image positioning & aspect-ratio fit using Sharp visual entropy/attention analysis
+async function computeSmartFramingWithSharp(coverPath, bannerPath) {
+  let coverFit = 'cover';
+  let coverPosition = '50% 35%';
+  let bannerPosition = '50% 25%';
+
+  try {
+    if (coverPath && fs.existsSync(coverPath)) {
+      const meta = await sharp(coverPath).metadata();
+      if (meta.width && meta.height) {
+        const ratio = meta.width / meta.height;
+        if (ratio > 1.15) {
+          // Landscape image used as cover (e.g. 460x215 header): use contain-blur so it's never cropped
+          coverFit = 'contain-blur';
+          coverPosition = '50% 50%';
+        } else {
+          coverFit = 'cover';
+          // Sample 3 vertical bands (top, upper-mid, center) to find highest visual contrast/detail
+          const h3 = Math.max(10, Math.floor(meta.height / 3));
+          const [topStats, midStats] = await Promise.all([
+            sharp(coverPath).extract({ left: 0, top: 0, width: meta.width, height: h3 }).stats(),
+            sharp(coverPath).extract({ left: 0, top: h3, width: meta.width, height: h3 }).stats(),
+          ]);
+          const topEnergy = topStats.entropy || topStats.channels.reduce((s, c) => s + c.stdev, 0);
+          const midEnergy = midStats.entropy || midStats.channels.reduce((s, c) => s + c.stdev, 0);
+          coverPosition = topEnergy > midEnergy * 1.05 ? '50% 22%' : '50% 38%';
+        }
+      }
+    }
+    if (bannerPath && fs.existsSync(bannerPath)) {
+      const meta = await sharp(bannerPath).metadata();
+      if (meta.width && meta.height) {
+        const h3 = Math.max(10, Math.floor(meta.height / 3));
+        const [topStats, midStats] = await Promise.all([
+          sharp(bannerPath).extract({ left: 0, top: 0, width: meta.width, height: h3 }).stats(),
+          sharp(bannerPath).extract({ left: 0, top: h3, width: meta.width, height: h3 }).stats(),
+        ]);
+        const topEnergy = topStats.entropy || topStats.channels.reduce((s, c) => s + c.stdev, 0);
+        const midEnergy = midStats.entropy || midStats.channels.reduce((s, c) => s + c.stdev, 0);
+        bannerPosition = topEnergy > midEnergy ? '50% 20%' : '50% 35%';
+      }
+    }
+  } catch {}
+
+  return { coverFit, coverPosition, bannerPosition };
+}
+
+// Auto-repair existing games in games.json to use local cached images + smart framing
+async function autoRepairLibraryImages() {
+  try {
+    const games = readGames();
+    if (games.length === 0) return { repairedCount: 0, total: 0 };
+
+    const steamRoot = detectSteamRoot();
+    let repairedCount = 0;
+
+    for (let i = 0; i < games.length; i++) {
+      const g = games[i];
+      if (!g.steamAppId) continue;
+
+      const localCover = findLocalSteamImageFile(g.steamAppId, 'cover', steamRoot);
+      const localBanner = findLocalSteamImageFile(g.steamAppId, 'banner', steamRoot);
+      let changed = false;
+
+      if (localCover && g.coverUrl !== `/api/steam/local-image/${g.steamAppId}/cover`) {
+        g.coverUrl = `/api/steam/local-image/${g.steamAppId}/cover`;
+        changed = true;
+      }
+      if (localBanner && g.bannerUrl !== `/api/steam/local-image/${g.steamAppId}/banner`) {
+        g.bannerUrl = `/api/steam/local-image/${g.steamAppId}/banner`;
+        changed = true;
+      }
+
+      if (!g.coverPosition || !g.bannerPosition || !g.coverFit) {
+        const framing = await computeSmartFramingWithSharp(localCover, localBanner);
+        g.coverFit = g.coverFit || framing.coverFit;
+        g.coverPosition = g.coverPosition || framing.coverPosition;
+        g.bannerPosition = g.bannerPosition || framing.bannerPosition;
+        changed = true;
+      }
+
+      if (changed) repairedCount++;
+    }
+
+    if (repairedCount > 0) {
+      writeGames(games);
+      console.log(`[QuestLog] Auto-repaired & smart-framed ${repairedCount}/${games.length} game images from local Steam cache.`);
+    }
+    return { repairedCount, total: games.length };
+  } catch (err) {
+    console.error('Error in autoRepairLibraryImages:', err);
+    return { repairedCount: 0, total: 0 };
+  }
 }
 
 // Check valid image on Steam CDN
@@ -1058,6 +1214,170 @@ Catatan: ${notes || '(Buat ringkasan singkat sesuai status & progress)'}`;
       });
     }
 
+    // 18. GET /api/steam/local-image/:appId/:type (Serves local Steam librarycache artwork or falls back to Steam API)
+    if (req.method === 'GET' && pathname.startsWith('/api/steam/local-image/')) {
+      const parts = pathname.replace('/api/steam/local-image/', '').split('/');
+      const appId = parts[0];
+      const imgType = parts[1] === 'banner' ? 'banner' : 'cover';
+
+      const localFile = findLocalSteamImageFile(appId, imgType);
+      if (localFile && fs.existsSync(localFile)) {
+        const ext = path.extname(localFile).toLowerCase();
+        const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+        const buf = fs.readFileSync(localFile);
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+        });
+        return res.end(buf);
+      }
+
+      // Online fallback if not cached locally
+      try {
+        const apiRes = await fetch(`https://store.steampowered.com/api/appdetails?appids=${encodeURIComponent(appId)}`);
+        if (apiRes.ok) {
+          const data = await apiRes.json();
+          const headerImg = data?.[appId]?.data?.header_image;
+          if (headerImg) {
+            res.writeHead(302, { Location: headerImg });
+            return res.end();
+          }
+        }
+      } catch {}
+
+      res.writeHead(404);
+      return res.end('Image not found');
+    }
+
+    // 19. POST /api/games/repair-images (Bulk repair broken image URLs & auto-frame via Sharp)
+    if (req.method === 'POST' && pathname === '/api/games/repair-images') {
+      const result = await autoRepairLibraryImages();
+      return sendJson(res, 200, { success: true, ...result });
+    }
+
+    // 20. POST /api/gemini/auto-frame/:id (Gemini Multimodal Vision AI Smart Image Framing)
+    if (req.method === 'POST' && pathname.startsWith('/api/gemini/auto-frame/')) {
+      const gameId = decodeURIComponent(pathname.replace('/api/gemini/auto-frame/', ''));
+      const games = readGames();
+      const idx = games.findIndex(g => g.id === gameId);
+      if (idx === -1) {
+        return sendJson(res, 404, { error: 'Game tidak ditemukan' });
+      }
+
+      const game = games[idx];
+      const apiKey = resolveGeminiApiKey();
+      const model = resolveGeminiModel();
+
+      // Load local image or remote image buffer
+      let imgBuffer = null;
+      if (game.steamAppId) {
+        const localFile = findLocalSteamImageFile(game.steamAppId, 'cover');
+        if (localFile && fs.existsSync(localFile)) {
+          imgBuffer = fs.readFileSync(localFile);
+        }
+      }
+      if (!imgBuffer && game.coverUrl && game.coverUrl.startsWith('http')) {
+        try {
+          const r = await fetch(game.coverUrl);
+          if (r.ok) imgBuffer = Buffer.from(await r.arrayBuffer());
+        } catch {}
+      }
+
+      if (!imgBuffer) {
+        return sendJson(res, 400, { error: 'Gambar game tidak tersedia untuk dianalisis.' });
+      }
+
+      // Get image dimensions & create compact 180px thumbnail via Sharp so Vision token usage is tiny (~80 tokens)
+      const meta = await sharp(imgBuffer).metadata();
+      const isLandscape = meta.width && meta.height && meta.width / meta.height > 1.15;
+
+      if (!apiKey) {
+        // Fallback to Sharp attention framing if no Gemini API key
+        const localCover = game.steamAppId ? findLocalSteamImageFile(game.steamAppId, 'cover') : null;
+        const localBanner = game.steamAppId ? findLocalSteamImageFile(game.steamAppId, 'banner') : null;
+        const sharpFraming = await computeSmartFramingWithSharp(localCover, localBanner);
+        games[idx] = {
+          ...game,
+          ...sharpFraming,
+          focalNote: 'Disesuaikan otomatis dengan analisis kontras visual lokal (Sharp).',
+          updatedAt: new Date().toISOString(),
+        };
+        writeGames(games);
+        return sendJson(res, 200, { game: games[idx], source: 'sharp-local' });
+      }
+
+      const thumbBuf = await sharp(imgBuffer)
+        .resize({ width: 180, height: 240, fit: 'inside' })
+        .jpeg({ quality: 68 })
+        .toBuffer();
+      const thumbB64 = thumbBuf.toString('base64');
+
+      const { interaction, usedModel } = await createInteractionFast(apiKey, model, {
+        input: [
+          {
+            type: 'user_input',
+            content: [
+              {
+                type: 'text',
+                text: `Gambar artwork game "${game.title}" (resolusi asli ${meta.width}x${meta.height}, ${isLandscape ? 'landscape horizontal' : 'portrait vertikal'}).
+Tentukan posisi fokus CSS object-position terbaik (format "X% Y%", misal "50% 20%" bila wajah karakter di atas, atau "50% 50%" bila di tengah) untuk:
+1. coverPosition (kartu poster 2:3)
+2. bannerPosition (banner lebar 16:6 di modal detail agar kepala karakter/judul tidak terpotong)
+3. coverFit: gunakan "contain-blur" jika gambar asli berbentuk landscape horizontal dan akan terpotong buruk bila di-zoom paksa ke 2:3, atau "cover" jika sudah proporsional.
+4. focalNote: 1 kalimat pendek Bahasa Indonesia menjelaskan titik fokus yang terdeteksi.`,
+              },
+              {
+                type: 'image',
+                data: thumbB64,
+                mime_type: 'image/jpeg',
+              },
+            ],
+          },
+        ],
+        response_format: {
+          type: 'text',
+          mime_type: 'application/json',
+          schema: {
+            type: 'object',
+            properties: {
+              coverPosition: { type: 'string' },
+              bannerPosition: { type: 'string' },
+              coverFit: { type: 'string', enum: ['cover', 'contain-blur'] },
+              focalNote: { type: 'string' },
+            },
+            required: ['coverPosition', 'bannerPosition', 'coverFit', 'focalNote'],
+          },
+        },
+      });
+
+      let parsed = {
+        coverPosition: '50% 30%',
+        bannerPosition: '50% 25%',
+        coverFit: isLandscape ? 'contain-blur' : 'cover',
+        focalNote: 'Titik fokus disesuaikan oleh Gemini Vision.',
+      };
+      try {
+        parsed = { ...parsed, ...JSON.parse(interaction.output_text || '{}') };
+      } catch {}
+
+      games[idx] = {
+        ...game,
+        coverPosition: parsed.coverPosition,
+        bannerPosition: parsed.bannerPosition,
+        coverFit: parsed.coverFit,
+        focalNote: `${parsed.focalNote} (${usedModel})`,
+        updatedAt: new Date().toISOString(),
+      };
+      writeGames(games);
+
+      return sendJson(res, 200, {
+        game: games[idx],
+        model: usedModel,
+        ...parsed,
+      });
+    }
+
     // Fallback: static files
     return serveStatic(req, res);
   } catch (err) {
@@ -1068,4 +1388,5 @@ Catatan: ${notes || '(Buat ringkasan singkat sesuai status & progress)'}`;
 
 server.listen(PORT, () => {
   console.log(`QuestLog Server running on http://localhost:${PORT}`);
+  autoRepairLibraryImages();
 });

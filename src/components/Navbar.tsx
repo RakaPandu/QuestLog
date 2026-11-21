@@ -20,8 +20,10 @@ import {
   PauseCircle,
   Maximize2,
   Compass,
-  HardDrive
+  HardDrive,
+  Image
 } from 'lucide-react';
+import { api } from '../services/api';
 import type { GameStats } from '../types/game';
 import type { FilterTab } from './StatusTabs';
 
@@ -377,6 +379,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Scan & Impor Steam Lokal</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setOpenMenu(null);
+                    try {
+                      await api.repairAllImages();
+                      onRefresh();
+                    } catch {}
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#1b2234] hover:text-white flex items-center gap-2 text-amber-300"
+                >
+                  <Image className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Perbaiki & Sesuaikan Semua Gambar</span>
                 </button>
                 <div className="my-1 border-t border-[#1e2538]" />
                 <button

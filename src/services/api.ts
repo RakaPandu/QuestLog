@@ -185,4 +185,26 @@ export const api = {
     if (!res.ok) throw new Error(data.error || 'Gagal merapikan catatan dengan Gemini');
     return data;
   },
+
+  async repairAllImages(): Promise<{ success: boolean; repairedCount: number; total: number }> {
+    const res = await fetch(`${API_BASE}/games/repair-images`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memperbaiki gambar library');
+    return data;
+  },
+
+  async autoFrameGameImage(id: string): Promise<{
+    game: Game;
+    coverPosition: string;
+    bannerPosition: string;
+    coverFit: 'cover' | 'contain-blur';
+    focalNote: string;
+  }> {
+    const res = await fetch(`${API_BASE}/gemini/auto-frame/${encodeURIComponent(id)}`, {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal menyesuaikan posisi gambar dengan Gemini Vision');
+    return data;
+  },
 };

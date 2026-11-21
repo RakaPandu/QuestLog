@@ -7,6 +7,10 @@ export interface Game {
   status: GameStatus;
   coverUrl: string;
   bannerUrl?: string;
+  coverPosition?: string;
+  bannerPosition?: string;
+  coverFit?: 'cover' | 'contain-blur';
+  focalNote?: string;
   genres: string[];
   releaseDate?: string;
   developer?: string;

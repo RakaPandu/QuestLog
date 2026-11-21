@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Star, Clock, Trophy, Flame, Bookmark, XCircle, PauseCircle, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { Game, GameStatus } from '../types/game';
 
@@ -9,6 +9,44 @@ interface GameCardProps {
 }
 
 export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
+  const [imgSrc, setImgSrc] = useState<string>(game.coverUrl || '');
+  const [isLandscapeImg, setIsLandscapeImg] = useState<boolean>(game.coverFit === 'contain-blur');
+  const [imgFailed, setImgFailed] = useState<boolean>(false);
+
+  useEffect(() => {
+    setImgSrc(game.coverUrl || (game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/cover` : ''));
+    setIsLandscapeImg(game.coverFit === 'contain-blur');
+    setImgFailed(false);
+  }, [game.coverUrl, game.steamAppId, game.coverFit]);
+
+  const handleImgError = () => {
+    const localCover = game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/cover` : '';
+    const localBanner = game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/banner` : '';
+
+    if (localCover && imgSrc !== localCover && imgSrc !== localBanner && imgSrc !== game.bannerUrl) {
+      setImgSrc(localCover);
+    } else if (game.bannerUrl && imgSrc !== game.bannerUrl && imgSrc !== localBanner) {
+      setImgSrc(game.bannerUrl);
+    } else if (localBanner && imgSrc !== localBanner) {
+      setImgSrc(localBanner);
+    } else {
+      setImgFailed(true);
+    }
+  };
+
+  const handleImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const el = e.currentTarget;
+    if (game.coverFit === 'contain-blur') {
+      setIsLandscapeImg(true);
+    } else if (game.coverFit === 'cover') {
+      setIsLandscapeImg(false);
+    } else if (el.naturalWidth && el.naturalHeight) {
+      setIsLandscapeImg(el.naturalWidth > el.naturalHeight * 1.15);
+    }
+  };
+
+  const useContainBlur = game.coverFit === 'contain-blur' || isLandscapeImg;
+  const objectPos = game.coverPosition || '50% 30%';
   const statusConfig = {
     playing: {
       label: 'Playing',
@@ -49,18 +87,36 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
     >
       {/* Game Cover Poster (Aspect Ratio 2:3 - Steam Library Standard) */}
       <div className="relative aspect-[2/3] w-full bg-[#0a0c12] overflow-hidden">
-        {game.coverUrl ? (
-          <img
-            src={game.coverUrl}
-            alt={game.title}
-            loading="lazy"
-            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-102"
-            onError={(e) => {
-              if (game.bannerUrl && (e.currentTarget.src !== game.bannerUrl)) {
-                e.currentTarget.src = game.bannerUrl;
-              }
-            }}
-          />
+        {imgSrc && !imgFailed ? (
+          useContainBlur ? (
+            <div className="relative w-full h-full flex items-center justify-center bg-[#0a0c12]">
+              <img
+                src={imgSrc}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-40 pointer-events-none"
+                style={{ objectPosition: objectPos }}
+              />
+              <img
+                src={imgSrc}
+                alt={game.title}
+                loading="lazy"
+                onLoad={handleImgLoad}
+                onError={handleImgError}
+                className="relative z-10 w-full max-h-full object-contain shadow-md transition-transform duration-200 group-hover:scale-102"
+              />
+            </div>
+          ) : (
+            <img
+              src={imgSrc}
+              alt={game.title}
+              loading="lazy"
+              onLoad={handleImgLoad}
+              onError={handleImgError}
+              style={{ objectPosition: objectPos }}
+              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-102"
+            />
+          )
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-[#11141c] text-slate-500">
             <span className="text-xs font-medium px-2 text-center">{game.title}</span>

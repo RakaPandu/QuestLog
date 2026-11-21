@@ -27,9 +27,35 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   const [dropReason, setDropReason] = useState<string>(game.dropReason || '');
   const [rating, setRating] = useState<number>(game.rating);
   const [notes, setNotes] = useState<string>(game.notes || '');
+  const [coverPosition, setCoverPosition] = useState<string>(game.coverPosition || '50% 30%');
+  const [bannerPosition, setBannerPosition] = useState<string>(game.bannerPosition || '50% 25%');
+  const [coverFit, setCoverFit] = useState<'cover' | 'contain-blur'>(game.coverFit || 'cover');
+  const [focalNote, setFocalNote] = useState<string>(game.focalNote || '');
+  const [bannerSrc, setBannerSrc] = useState<string>(
+    game.bannerUrl || (game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/banner` : game.coverUrl)
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
+  const [isAutoFraming, setIsAutoFraming] = useState(false);
+
+  const handleAutoFrameWithGemini = async () => {
+    setIsAutoFraming(true);
+    try {
+      const res = await api.autoFrameGameImage(game.id);
+      setCoverPosition(res.coverPosition || '50% 30%');
+      setBannerPosition(res.bannerPosition || '50% 25%');
+      setCoverFit(res.coverFit || 'cover');
+      setFocalNote(res.focalNote || '');
+      if (res.game) {
+        onGameUpdated(res.game);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyesuaikan posisi gambar dengan Gemini Vision');
+    } finally {
+      setIsAutoFraming(false);
+    }
+  };
 
   const handlePolishWithGemini = async () => {
     setIsPolishing(true);
@@ -60,6 +86,13 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
     setDropReason(game.dropReason || '');
     setRating(game.rating);
     setNotes(game.notes || '');
+    setCoverPosition(game.coverPosition || '50% 30%');
+    setBannerPosition(game.bannerPosition || '50% 25%');
+    setCoverFit(game.coverFit || 'cover');
+    setFocalNote(game.focalNote || '');
+    setBannerSrc(
+      game.bannerUrl || (game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/banner` : game.coverUrl)
+    );
   }, [game]);
 
   const handleStatusChange = (newStatus: GameStatus) => {
@@ -87,6 +120,10 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
         dropReason: status === 'dropped' ? dropReason.trim() : '',
         rating: Number(rating) || 0,
         notes: notes.trim(),
+        coverPosition,
+        bannerPosition,
+        coverFit,
+        focalNote,
       });
       onGameUpdated(updated);
       onClose();
@@ -118,17 +155,89 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
       <div className="relative w-full max-w-2xl bg-[#121520] border border-[#242b3d] rounded-xl shadow-2xl overflow-hidden my-6">
         {/* Banner Header Image with overlay */}
         <div className="relative h-48 sm:h-52 w-full bg-[#090b10] overflow-hidden">
-          {game.bannerUrl ? (
+          {bannerSrc ? (
             <img
-              src={game.bannerUrl}
+              src={bannerSrc}
               alt="Game Banner"
-              className="w-full h-full object-cover opacity-60"
+              style={{ objectPosition: bannerPosition || '50% 25%' }}
+              onError={() => {
+                const localBanner = game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/banner` : '';
+                const localCover = game.steamAppId ? `/api/steam/local-image/${game.steamAppId}/cover` : '';
+                if (localBanner && bannerSrc !== localBanner && bannerSrc !== localCover) {
+                  setBannerSrc(localBanner);
+                } else if (game.coverUrl && bannerSrc !== game.coverUrl && bannerSrc !== localCover) {
+                  setBannerSrc(game.coverUrl);
+                } else if (localCover && bannerSrc !== localCover) {
+                  setBannerSrc(localCover);
+                }
+              }}
+              className="w-full h-full object-cover opacity-65 transition-all duration-300"
             />
           ) : (
             <div className="w-full h-full bg-[#161a26]" />
           )}
 
           <div className="absolute inset-0 bg-gradient-to-t from-[#121520] via-[#121520]/75 to-transparent" />
+
+          {/* Top Left: AI Vision Framing & Quick Position Controls */}
+          <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5 z-10">
+            <button
+              type="button"
+              onClick={handleAutoFrameWithGemini}
+              disabled={isAutoFraming}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-black/75 hover:bg-[#1a2438] text-sky-300 border border-sky-500/40 text-[11px] font-medium transition-colors disabled:opacity-50"
+              title="Gunakan Gemini Vision AI untuk mendeteksi wajah/logo & menyesuaikan posisi gambar otomatis"
+            >
+              {isAutoFraming ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>AI Vision Framing...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3 text-sky-400" />
+                  <span>Auto-Posisi Gambar (AI)</span>
+                </>
+              )}
+            </button>
+
+            <div className="flex items-center bg-black/75 border border-white/10 rounded p-0.5 text-[10px]">
+              {[
+                { label: 'Atas', pos: '50% 15%' },
+                { label: 'Tengah', pos: '50% 45%' },
+                { label: 'Bawah', pos: '50% 80%' },
+              ].map(p => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setBannerPosition(p.pos);
+                    setCoverPosition(p.pos);
+                  }}
+                  className={`px-1.5 py-0.5 rounded transition-colors ${
+                    coverPosition === p.pos
+                      ? 'bg-sky-600 text-white font-semibold'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title={`Fokus Gambar: ${p.label}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCoverFit(prev => (prev === 'cover' ? 'contain-blur' : 'cover'))}
+                className={`ml-0.5 px-1.5 py-0.5 rounded border-l border-white/10 transition-colors ${
+                  coverFit === 'contain-blur'
+                    ? 'bg-emerald-700 text-white font-semibold'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Toggle Fit Penuh (Cocok untuk gambar cover bertipe Landscape)"
+              >
+                {coverFit === 'contain-blur' ? 'Fit: Utuh' : 'Fit: Penuh'}
+              </button>
+            </div>
+          </div>
 
           {/* Close button top right */}
           <button
@@ -173,6 +282,18 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-5 space-y-4">
+          {focalNote && (
+            <div className="px-3 py-1.5 rounded bg-[#141a29] border border-[#24304c] text-[11px] text-sky-300 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span>{focalNote}</span>
+              </div>
+              <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                Cover: {coverPosition} · Fit: {coverFit}
+              </span>
+            </div>
+          )}
+
           {/* Status Bar */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
