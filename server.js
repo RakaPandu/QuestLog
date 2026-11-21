@@ -1,9 +1,50 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import dns from 'node:dns';
+import net from 'node:net';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
+
+// Force IPv4 first on Windows to avoid 25-30s IPv6 connection stalls to Google APIs
+dns.setDefaultResultOrder('ipv4first');
+if (net.setDefaultAutoSelectFamily) {
+  net.setDefaultAutoSelectFamily(false);
+}
+
+// Prevent SDK internal 60-second retry loops on 503 High Demand / 429 Free Tier / Timeout so we can fast-fallback immediately
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = async (url, init = {}) => {
+  const urlStr = String(url);
+  if (urlStr.includes('generativelanguage.googleapis.com')) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await nativeFetch(url, {
+        ...init,
+        signal: init.signal || controller.signal,
+      });
+      if (res.status === 503 || res.status === 429) {
+        const bodyText = await res.text();
+        return new Response(bodyText, {
+          status: 422, // Non-retryable by Speakeasy so fallback triggers immediately
+          statusText: res.statusText,
+          headers: res.headers,
+        });
+      }
+      return res;
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: { message: err?.message || 'Request timeout or network error', code: 'timeout' } }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  return nativeFetch(url, init);
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,11 +158,55 @@ function resolveGeminiApiKey(overrideKey) {
 }
 
 function resolveGeminiModel(overrideModel) {
-  const allowed = ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-3.5-flash-lite'];
+  const allowed = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-4-hydrogen',
+    'gemini-4-argon',
+    'gemini-4-neon',
+    'gemini-4-carbon',
+  ];
   if (overrideModel && allowed.includes(overrideModel)) return overrideModel;
   const cfg = readConfig();
   if (cfg.geminiModel && allowed.includes(cfg.geminiModel)) return cfg.geminiModel;
-  return 'gemini-4-hydrogen';
+  return 'gemini-3.1-flash-lite';
+}
+
+// Fast Interaction Runner with automatic fallback on 503 High Demand / 429 Free Tier & minimal thinking latency
+async function createInteractionFast(apiKey, preferredModel, baseOptions) {
+  const client = new GoogleGenAI({ apiKey });
+  const candidates = Array.from(
+    new Set([
+      preferredModel,
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-4-hydrogen',
+    ])
+  );
+
+  let lastError = null;
+  for (const candidateModel of candidates) {
+    try {
+      const thinkingLevel = candidateModel.includes('flash-lite') ? 'minimal' : 'low';
+      const interaction = await client.interactions.create({
+        ...baseOptions,
+        model: candidateModel,
+        generation_config: {
+          thinking_level: thinkingLevel,
+          ...(baseOptions.generation_config || {}),
+        },
+      });
+      return {
+        interaction,
+        usedModel: candidateModel,
+        fellBack: candidateModel !== preferredModel,
+      };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Gemini Fallback] Model ${candidateModel} failed (${err.message?.slice(0, 100)}), trying next...`);
+    }
+  }
+  throw lastError || new Error('Semua model Gemini sedang sibuk. Silakan coba beberapa saat lagi.');
 }
 
 // Local Steam Library Scanner
@@ -793,11 +878,12 @@ const server = http.createServer(async (req, res) => {
         maskedKey: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : '',
         model,
         availableModels: [
-          { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen (Fast & Balanced - Default)' },
+          { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (Ultra-Fast & Hemat Token - Recommended)' },
+          { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Fast 1M Context)' },
+          { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen (Frontier Balanced + Auto-Fallback)' },
           { id: 'gemini-4-argon', label: 'Gemini 4 Argon (Interactive Reasoning)' },
           { id: 'gemini-4-neon', label: 'Gemini 4 Neon (Frontier Speed)' },
           { id: 'gemini-4-carbon', label: 'Gemini 4 Carbon (Deep Frontier Reasoning)' },
-          { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Ultra-Fast)' },
         ],
       });
     }
@@ -837,34 +923,19 @@ const server = http.createServer(async (req, res) => {
       }
 
       const games = readGames();
-      const librarySummary = games.map(g => ({
-        id: g.id,
-        title: g.title,
-        status: g.status,
-        playtimeHours: g.playtimeHours,
-        rating: g.rating,
-        genres: g.genres,
-        currentProgress: g.currentProgress,
-        dropReason: g.dropReason,
-      }));
+      const librarySummary = games.slice(0, 50).map(g =>
+        `${g.id}|${g.title}|${g.status}|${g.playtimeHours}h|★${g.rating || 0}`
+      ).join('\n');
 
-      const client = new GoogleGenAI({ apiKey });
-      const prompt = `Analisis koleksi game QuestLog pengguna berikut (total ${games.length} game):
-${JSON.stringify(librarySummary, null, 2)}
+      const prompt = `Library (${games.length} game, format id|title|status|hours|rating):
+${librarySummary || '(Kosong)'}
 
-Preferensi sesi bermain malam ini:
-- Mood / Vibe: ${mood}
-- Waktu luang tersedia: ${timeAvailable}
+Sesi: Mood="${mood}", Waktu="${timeAvailable}".
+Pilih 3 game terbaik (utamakan dari library status playing/plan_to_play/on_hold; bila kurang dari 3, tambahkan rekomendasi Steam yang cocok). Berikan alasan ringkas (1 kalimat), target sesi sesuai waktu, matchScore (78-99), dan 1 kalimat backlogInsight dalam Bahasa Indonesia.`;
 
-Tugasmu:
-1. Pilih hingga 3 game terbaik untuk dimainkan malam ini (prioritaskan dari koleksi pengguna yang berstatus 'playing', 'plan_to_play', atau 'on_hold'. Jika koleksi kosong atau kurang dari 3, sarankan game PC Steam populer yang sangat cocok dengan mood tersebut).
-2. Berikan alasan personal yang tajam, target sesi singkat (sessionGoal) yang realistis sesuai waktu luang (${timeAvailable}), dan skor kecocokan (matchScore 75-99).
-3. Berikan 1 kalimat strategi manajemen backlog (backlogInsight) berdasarkan komposisi game yang sedang dimainkan/di-drop pengguna. Gunakan Bahasa Indonesia yang natural dan ringkas.`;
-
-      const interaction = await client.interactions.create({
-        model,
+      const { interaction, usedModel, fellBack } = await createInteractionFast(apiKey, model, {
         input: prompt,
-        system_instruction: 'Kamu adalah Gemini Quest Advisor, asisten kurator backlog game PC & Steam yang objektif, to-the-point, dan sangat memahami psikologi gamer.',
+        system_instruction: 'Kurator backlog game PC objektif & ringkas.',
         response_format: {
           type: 'text',
           mime_type: 'application/json',
@@ -907,7 +978,7 @@ Tugasmu:
 
       return sendJson(res, 200, {
         interactionId: interaction.id,
-        model,
+        model: fellBack ? `${usedModel} (auto-fallback)` : usedModel,
         ...parsed,
       });
     }
@@ -932,20 +1003,15 @@ Tugasmu:
       }
 
       const games = readGames();
-      const libraryContext = games.slice(0, 60).map(g =>
-        `- ${g.title} [${g.status}] (${g.playtimeHours}h, Rating: ${g.rating}/10${g.currentProgress ? `, Progress: ${g.currentProgress}` : ''}${g.dropReason ? `, Drop Reason: ${g.dropReason}` : ''})`
+      const libraryContext = games.slice(0, 50).map(g =>
+        `- ${g.title} [${g.status}] (${g.playtimeHours}h, ★${g.rating}/10${g.currentProgress ? `, ${g.currentProgress}` : ''}${g.dropReason ? `, Drop: ${g.dropReason}` : ''})`
       ).join('\n');
 
-      const systemInstruction = `Kamu adalah Gemini Quest Advisor di aplikasi desktop QuestLog (Steam Backlog & Progress Tracker).
-Gunakan Bahasa Indonesia yang santai, padat, dan membantu. Hindari basa-basi berlebihan.
-Berikut adalah daftar game di library QuestLog pengguna saat ini (${games.length} game):
-${libraryContext || '(Library masih kosong)'}
+      const systemInstruction = `Kamu adalah Gemini Quest Advisor di aplikasi QuestLog. Jawab ringkas & langsung ke poin dalam Bahasa Indonesia.
+Library (${games.length} game):
+${libraryContext || '(Kosong)'}`;
 
-Bantu pengguna memilih game untuk dimainkan, menyusun strategi menamatkan backlog, merekap cerita game tanpa spoiler, atau memberikan rekomendasi game Steam baru yang sesuai selera mereka.`;
-
-      const client = new GoogleGenAI({ apiKey });
       const reqOptions = {
-        model,
         input: userMessage,
         system_instruction: systemInstruction,
       };
@@ -953,11 +1019,11 @@ Bantu pengguna memilih game untuk dimainkan, menyusun strategi menamatkan backlo
         reqOptions.previous_interaction_id = previousInteractionId;
       }
 
-      const interaction = await client.interactions.create(reqOptions);
+      const { interaction, usedModel, fellBack } = await createInteractionFast(apiKey, model, reqOptions);
       return sendJson(res, 200, {
         interactionId: interaction.id,
         reply: interaction.output_text || '',
-        model,
+        model: fellBack ? `${usedModel} (auto-fallback)` : usedModel,
       });
     }
 
@@ -975,29 +1041,20 @@ Bantu pengguna memilih game untuk dimainkan, menyusun strategi menamatkan backlo
       }
 
       const { title, status, playtimeHours, currentProgress, dropReason, notes, rating } = payload;
-      const client = new GoogleGenAI({ apiKey });
 
-      const prompt = `Bantu rapikan atau buatkan catatan review & progress singkat untuk game berikut di tracker QuestLog:
-- Judul Game: ${title}
-- Status: ${status}
-- Jam Main: ${playtimeHours || 0} jam
-- Progress Saat Ini: ${currentProgress || '-'}
-${status === 'dropped' ? `- Alasan Drop: ${dropReason || '-'}` : ''}
-- Rating: ${rating || 0}/10
-- Catatan Mentah Pengguna: ${notes || '(Belum ada catatan, buatkan template poin review singkat atau milestone yang relevan dengan game ini)'}
+      const prompt = `Rapikan catatan review/progress game berikut (Bahasa Indonesia, maksimal 3 kalimat padat tanpa klise AI):
+Game: ${title} (${status}, ${playtimeHours || 0}h, Rating ${rating || 0}/10, Progress: ${currentProgress || '-'}${status === 'dropped' ? `, Drop: ${dropReason || '-'}` : ''})
+Catatan: ${notes || '(Buat ringkasan singkat sesuai status & progress)'}`;
 
-Hasilkan catatan/review dalam Bahasa Indonesia yang ringkas, human-crafted (maksimal 3-4 poin atau 1 paragraf padat), tanpa klise AI.`;
-
-      const interaction = await client.interactions.create({
-        model,
+      const { interaction, usedModel } = await createInteractionFast(apiKey, model, {
         input: prompt,
-        system_instruction: 'Kamu adalah asisten penulis jurnal game pribadi yang ringkas, tajam, dan natural.',
+        system_instruction: 'Penulis jurnal game pribadi yang ringkas dan natural.',
       });
 
       return sendJson(res, 200, {
         interactionId: interaction.id,
         polishedNotes: (interaction.output_text || '').trim(),
-        model,
+        model: usedModel,
       });
     }
 

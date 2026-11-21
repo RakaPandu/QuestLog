@@ -41,7 +41,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   const [activeTab, setActiveTab] = useState<AdvisorTab>('picker');
   const [config, setConfig] = useState<GeminiConfig | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-4-hydrogen');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSavedMsg, setConfigSavedMsg] = useState<string | null>(null);
 
