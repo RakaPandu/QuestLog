@@ -7,9 +7,11 @@ import { AddGameModal } from './components/AddGameModal';
 import { GameDetailModal } from './components/GameDetailModal';
 import { StatsModal } from './components/StatsModal';
 import { BackupModal } from './components/BackupModal';
+import { GeminiAdvisorModal } from './components/GeminiAdvisorModal';
+import { LocalSteamModal } from './components/LocalSteamModal';
 import type { Game, GameStats, GameStatus } from './types/game';
 import { api } from './services/api';
-import { Gamepad2, Plus, AlertCircle } from 'lucide-react';
+import { Gamepad2, Plus, AlertCircle, HardDrive, Compass } from 'lucide-react';
 
 export function App() {
   const [games, setGames] = useState<Game[]>([]);
@@ -149,6 +151,8 @@ export function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState<boolean>(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
+  const [isGeminiModalOpen, setIsGeminiModalOpen] = useState<boolean>(false);
+  const [isLocalSteamModalOpen, setIsLocalSteamModalOpen] = useState<boolean>(false);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
 
@@ -257,6 +261,8 @@ export function App() {
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenStatsModal={() => setIsStatsModalOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        onOpenGeminiModal={() => setIsGeminiModalOpen(true)}
+        onOpenLocalSteamModal={() => setIsLocalSteamModalOpen(true)}
         onRefresh={loadData}
         isLoading={isLoading}
         zoomScale={zoomScale}
@@ -333,13 +339,31 @@ export function App() {
                 ? `Tidak ditemukan game dengan kata kunci "${searchQuery}". Coba ubah pencarian.`
                 : 'Mulai catat game favoritmu, game yang ingin kamu mainkan, atau game yang sudah kamu drop.'}
             </p>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 border border-sky-500 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah Game Baru</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 border border-sky-500 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Game Baru</span>
+              </button>
+
+              <button
+                onClick={() => setIsLocalSteamModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-emerald-300 bg-[#141a26] hover:bg-[#1b2334] border border-[#25324a] transition-colors"
+              >
+                <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Scan & Impor Steam Lokal</span>
+              </button>
+
+              <button
+                onClick={() => setIsGeminiModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-sky-300 bg-[#141a26] hover:bg-[#1b2334] border border-[#25324a] transition-colors"
+              >
+                <Compass className="w-3.5 h-3.5 text-sky-400" />
+                <span>Tanya Gemini Advisor</span>
+              </button>
+            </div>
           </div>
         )}
       </main>
@@ -371,6 +395,22 @@ export function App() {
         onClose={() => setIsBackupModalOpen(false)}
         onDataRestored={loadData}
         totalGames={games.length}
+      />
+
+      <GeminiAdvisorModal
+        isOpen={isGeminiModalOpen}
+        onClose={() => setIsGeminiModalOpen(false)}
+        games={games}
+        onSelectGame={game => {
+          setSelectedGame(game);
+          setIsDetailModalOpen(true);
+        }}
+      />
+
+      <LocalSteamModal
+        isOpen={isLocalSteamModalOpen}
+        onClose={() => setIsLocalSteamModalOpen(false)}
+        onImportSuccess={loadData}
       />
     </div>
   );

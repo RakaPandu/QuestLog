@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, Trash2, Clock, Star, Trophy, Bookmark, Flame, XCircle, PauseCircle, Save, Plus, AlertTriangle } from 'lucide-react';
+import { X, ExternalLink, Trash2, Clock, Star, Trophy, Bookmark, Flame, XCircle, PauseCircle, Save, Plus, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Game, GameStatus } from '../types/game';
 import { api } from '../services/api';
@@ -29,6 +29,29 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   const [notes, setNotes] = useState<string>(game.notes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPolishing, setIsPolishing] = useState(false);
+
+  const handlePolishWithGemini = async () => {
+    setIsPolishing(true);
+    try {
+      const res = await api.polishNotesWithGemini({
+        title: game.title,
+        status,
+        playtimeHours,
+        currentProgress,
+        dropReason,
+        notes,
+        rating,
+      });
+      if (res.polishedNotes) {
+        setNotes(res.polishedNotes);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Gagal merapikan catatan dengan Gemini AI');
+    } finally {
+      setIsPolishing(false);
+    }
+  };
 
   useEffect(() => {
     setStatus(game.status);
@@ -273,11 +296,32 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
 
           {/* Notes / Personal Review */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-              Review Pribadi / Catatan:
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-semibold text-slate-300">
+                Review Pribadi / Catatan:
+              </label>
+              <button
+                type="button"
+                onClick={handlePolishWithGemini}
+                disabled={isPolishing}
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#161c2b] hover:bg-[#1e273d] border border-[#28334e] text-sky-400 text-[10px] font-medium transition-colors disabled:opacity-50"
+                title="Susun atau rapikan catatan otomatis dengan Gemini AI"
+              >
+                {isPolishing ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Menyusun...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3" />
+                    <span>Rapikan via Gemini AI</span>
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
-              rows={2}
+              rows={3}
               placeholder="Impresi, build karakter, gameplay..."
               value={notes}
               onChange={e => setNotes(e.target.value)}

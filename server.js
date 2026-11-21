@@ -1,7 +1,9 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +11,7 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'games.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const DIST_DIR = path.join(__dirname, 'dist');
 
@@ -85,6 +88,187 @@ function writeGames(games) {
     createSnapshot('auto', games);
     lastSnapshotTime = now;
   }
+}
+
+// Config helpers (stores local settings & Gemini API key, gitignored)
+function readConfig() {
+  if (!fs.existsSync(CONFIG_FILE)) {
+    return { geminiApiKey: '', geminiModel: 'gemini-4-hydrogen', steamPath: '' };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  } catch {
+    return { geminiApiKey: '', geminiModel: 'gemini-4-hydrogen', steamPath: '' };
+  }
+}
+
+function writeConfig(newCfg) {
+  const current = readConfig();
+  const merged = { ...current, ...newCfg };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  return merged;
+}
+
+function resolveGeminiApiKey(overrideKey) {
+  if (overrideKey && overrideKey.trim()) return overrideKey.trim();
+  const cfg = readConfig();
+  if (cfg.geminiApiKey && cfg.geminiApiKey.trim()) return cfg.geminiApiKey.trim();
+  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+}
+
+function resolveGeminiModel(overrideModel) {
+  const allowed = ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-3.5-flash-lite'];
+  if (overrideModel && allowed.includes(overrideModel)) return overrideModel;
+  const cfg = readConfig();
+  if (cfg.geminiModel && allowed.includes(cfg.geminiModel)) return cfg.geminiModel;
+  return 'gemini-4-hydrogen';
+}
+
+// Local Steam Library Scanner
+function detectSteamRoot() {
+  const cfg = readConfig();
+  if (cfg.steamPath && fs.existsSync(cfg.steamPath)) {
+    return cfg.steamPath;
+  }
+
+  try {
+    const out = execSync('reg query "HKCU\\Software\\Valve\\Steam" /v SteamPath', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const match = out.match(/SteamPath\s+REG_SZ\s+(.+)/i);
+    if (match && match[1]) {
+      const candidate = match[1].trim().replace(/\//g, path.sep);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {}
+
+  const fallbacks = [
+    'D:\\#games\\steam',
+    'C:\\Program Files (x86)\\Steam',
+    'C:\\Program Files\\Steam',
+    'D:\\Steam',
+    'E:\\Steam',
+  ];
+  for (const fb of fallbacks) {
+    if (fs.existsSync(fb)) return fb;
+  }
+  return null;
+}
+
+function readLocalPlaytimes(steamRoot) {
+  const playtimes = {}; // appId -> { minutes, lastPlayed }
+  const userdataDir = path.join(steamRoot, 'userdata');
+  if (!fs.existsSync(userdataDir)) return playtimes;
+
+  try {
+    const userDirs = fs.readdirSync(userdataDir);
+    for (const u of userDirs) {
+      const localConfigPath = path.join(userdataDir, u, 'config', 'localconfig.vdf');
+      if (!fs.existsSync(localConfigPath)) continue;
+
+      const content = fs.readFileSync(localConfigPath, 'utf-8');
+      const appBlockRegex = /"(\d{3,10})"\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g;
+      let match;
+      while ((match = appBlockRegex.exec(content)) !== null) {
+        const appId = match[1];
+        const body = match[2];
+        const ptMatch = body.match(/"Playtime"\s+"(\d+)"/i);
+        const lpMatch = body.match(/"LastPlayed"\s+"(\d+)"/i);
+        if (ptMatch || lpMatch) {
+          const mins = ptMatch ? Number(ptMatch[1]) : 0;
+          const lp = lpMatch ? Number(lpMatch[1]) : 0;
+          if (!playtimes[appId] || mins > playtimes[appId].minutes) {
+            playtimes[appId] = { minutes: mins, lastPlayed: lp };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error reading localconfig.vdf:', err);
+  }
+  return playtimes;
+}
+
+function scanLocalSteamLibrary() {
+  const steamRoot = detectSteamRoot();
+  if (!steamRoot) {
+    return { found: false, steamRoot: null, games: [] };
+  }
+
+  const playtimes = readLocalPlaytimes(steamRoot);
+  const libraryDirs = new Set([path.join(steamRoot, 'steamapps')]);
+
+  const vdfPath = path.join(steamRoot, 'steamapps', 'libraryfolders.vdf');
+  if (fs.existsSync(vdfPath)) {
+    try {
+      const vdf = fs.readFileSync(vdfPath, 'utf-8');
+      const pathMatches = vdf.matchAll(/"path"\s+"([^"]+)"/gi);
+      for (const m of pathMatches) {
+        const libPath = path.join(m[1].replace(/\\\\/g, '\\'), 'steamapps');
+        if (fs.existsSync(libPath)) libraryDirs.add(libPath);
+      }
+    } catch {}
+  }
+
+  const existingGames = readGames();
+  const discovered = [];
+  const seenAppIds = new Set();
+
+  for (const steamappsDir of libraryDirs) {
+    if (!fs.existsSync(steamappsDir)) continue;
+    const files = fs.readdirSync(steamappsDir).filter(f => f.startsWith('appmanifest_') && f.endsWith('.acf'));
+    for (const file of files) {
+      try {
+        const raw = fs.readFileSync(path.join(steamappsDir, file), 'utf-8');
+        const appIdMatch = raw.match(/"appid"\s+"(\d+)"/i);
+        const nameMatch = raw.match(/"name"\s+"([^"]+)"/i);
+        const lastPlayedMatch = raw.match(/"LastPlayed"\s+"(\d+)"/i);
+
+        if (!appIdMatch || !nameMatch) continue;
+        const appId = appIdMatch[1];
+        if (seenAppIds.has(appId)) continue;
+        seenAppIds.add(appId);
+        const title = nameMatch[1];
+
+        // Skip Steamworks Common Redistributables or Proton/Tools
+        if (appId === '228980' || title.toLowerCase().includes('steamworks common redistributables')) {
+          continue;
+        }
+
+        const ptData = playtimes[appId] || { minutes: 0, lastPlayed: 0 };
+        const acfLastPlayed = lastPlayedMatch ? Number(lastPlayedMatch[1]) : 0;
+        const lastPlayedTs = Math.max(ptData.lastPlayed || 0, acfLastPlayed);
+        const playtimeHours = Math.round((ptData.minutes / 60) * 10) / 10;
+
+        const alreadyInLibrary = existingGames.some(
+          g => (g.steamAppId && String(g.steamAppId) === String(appId)) || g.title.toLowerCase() === title.toLowerCase()
+        );
+
+        let suggestedStatus = 'plan_to_play';
+        if (playtimeHours > 0) {
+          suggestedStatus = 'playing';
+        }
+
+        const steamCdn = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}`;
+        discovered.push({
+          steamAppId: appId,
+          title,
+          playtimeHours,
+          lastPlayed: lastPlayedTs > 0 ? new Date(lastPlayedTs * 1000).toISOString() : null,
+          coverUrl: `${steamCdn}/library_600x900.jpg`,
+          bannerUrl: `${steamCdn}/header.jpg`,
+          suggestedStatus,
+          alreadyInLibrary,
+        });
+      } catch {}
+    }
+  }
+
+  discovered.sort((a, b) => b.playtimeHours - a.playtimeHours || a.title.localeCompare(b.title));
+  return {
+    found: true,
+    steamRoot,
+    totalFound: discovered.length,
+    games: discovered,
+  };
 }
 
 // Check valid image on Steam CDN
@@ -530,6 +714,291 @@ const server = http.createServer(async (req, res) => {
 
       writeGames(restored);
       return sendJson(res, 200, { success: true, count: restored.length, filename });
+    }
+
+    // 12. GET /api/steam/local-scan
+    if (req.method === 'GET' && pathname === '/api/steam/local-scan') {
+      const scanResult = scanLocalSteamLibrary();
+      return sendJson(res, 200, scanResult);
+    }
+
+    // 13. POST /api/steam/local-import
+    if (req.method === 'POST' && pathname === '/api/steam/local-import') {
+      const payload = await parseBody(req);
+      const itemsToImport = Array.isArray(payload.games) ? payload.games : [];
+      if (itemsToImport.length === 0) {
+        return sendJson(res, 400, { error: 'Tidak ada game yang dipilih untuk diimpor.' });
+      }
+
+      const currentGames = readGames();
+      createSnapshot('before-local-steam-import', currentGames);
+
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      for (const item of itemsToImport) {
+        const existingIdx = currentGames.findIndex(
+          g => (g.steamAppId && item.steamAppId && String(g.steamAppId) === String(item.steamAppId)) ||
+               (g.title && item.title && g.title.toLowerCase() === item.title.toLowerCase())
+        );
+
+        if (existingIdx !== -1) {
+          currentGames[existingIdx] = {
+            ...currentGames[existingIdx],
+            playtimeHours: Math.max(Number(currentGames[existingIdx].playtimeHours) || 0, Number(item.playtimeHours) || 0),
+            coverUrl: currentGames[existingIdx].coverUrl || item.coverUrl || '',
+            bannerUrl: currentGames[existingIdx].bannerUrl || item.bannerUrl || '',
+            updatedAt: new Date().toISOString(),
+          };
+          updatedCount++;
+        } else {
+          currentGames.unshift({
+            id: `game_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            steamAppId: String(item.steamAppId || ''),
+            title: item.title,
+            status: item.status || item.suggestedStatus || 'plan_to_play',
+            coverUrl: item.coverUrl || '',
+            bannerUrl: item.bannerUrl || '',
+            genres: item.genres || ['Steam Local'],
+            releaseDate: '',
+            developer: 'Steam Installed',
+            playtimeHours: Number(item.playtimeHours) || 0,
+            currentProgress: item.playtimeHours > 0 ? `${item.playtimeHours} jam tercatat di Steam` : '',
+            dropReason: '',
+            rating: 0,
+            notes: item.lastPlayed ? `Terakhir dimainkan di PC: ${new Date(item.lastPlayed).toLocaleDateString('id-ID')}` : '',
+            platform: 'PC (Steam)',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          addedCount++;
+        }
+      }
+
+      writeGames(currentGames);
+      return sendJson(res, 200, {
+        success: true,
+        addedCount,
+        updatedCount,
+        totalGames: currentGames.length,
+      });
+    }
+
+    // 14. GET & POST /api/gemini/config
+    if (req.method === 'GET' && pathname === '/api/gemini/config') {
+      const apiKey = resolveGeminiApiKey();
+      const model = resolveGeminiModel();
+      return sendJson(res, 200, {
+        hasApiKey: Boolean(apiKey),
+        maskedKey: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : '',
+        model,
+        availableModels: [
+          { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen (Fast & Balanced - Default)' },
+          { id: 'gemini-4-argon', label: 'Gemini 4 Argon (Interactive Reasoning)' },
+          { id: 'gemini-4-neon', label: 'Gemini 4 Neon (Frontier Speed)' },
+          { id: 'gemini-4-carbon', label: 'Gemini 4 Carbon (Deep Frontier Reasoning)' },
+          { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Ultra-Fast)' },
+        ],
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/gemini/config') {
+      const payload = await parseBody(req);
+      const updates = {};
+      if (typeof payload.apiKey === 'string') {
+        updates.geminiApiKey = payload.apiKey.trim();
+      }
+      if (typeof payload.model === 'string') {
+        updates.geminiModel = resolveGeminiModel(payload.model);
+      }
+      writeConfig(updates);
+      const apiKey = resolveGeminiApiKey();
+      return sendJson(res, 200, {
+        success: true,
+        hasApiKey: Boolean(apiKey),
+        maskedKey: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : '',
+        model: resolveGeminiModel(),
+      });
+    }
+
+    // 15. POST /api/gemini/recommend (Gemini Quest Advisor - Smart Backlog Picker)
+    if (req.method === 'POST' && pathname === '/api/gemini/recommend') {
+      const payload = await parseBody(req);
+      const apiKey = resolveGeminiApiKey(payload.apiKey);
+      const model = resolveGeminiModel(payload.model);
+      const mood = payload.mood || 'balanced';
+      const timeAvailable = payload.timeAvailable || '1-2 jam';
+
+      if (!apiKey) {
+        return sendJson(res, 400, {
+          error: 'API Key Gemini belum diatur. Masukkan GEMINI_API_KEY di panel konfigurasi Advisor.',
+          needsApiKey: true,
+        });
+      }
+
+      const games = readGames();
+      const librarySummary = games.map(g => ({
+        id: g.id,
+        title: g.title,
+        status: g.status,
+        playtimeHours: g.playtimeHours,
+        rating: g.rating,
+        genres: g.genres,
+        currentProgress: g.currentProgress,
+        dropReason: g.dropReason,
+      }));
+
+      const client = new GoogleGenAI({ apiKey });
+      const prompt = `Analisis koleksi game QuestLog pengguna berikut (total ${games.length} game):
+${JSON.stringify(librarySummary, null, 2)}
+
+Preferensi sesi bermain malam ini:
+- Mood / Vibe: ${mood}
+- Waktu luang tersedia: ${timeAvailable}
+
+Tugasmu:
+1. Pilih hingga 3 game terbaik untuk dimainkan malam ini (prioritaskan dari koleksi pengguna yang berstatus 'playing', 'plan_to_play', atau 'on_hold'. Jika koleksi kosong atau kurang dari 3, sarankan game PC Steam populer yang sangat cocok dengan mood tersebut).
+2. Berikan alasan personal yang tajam, target sesi singkat (sessionGoal) yang realistis sesuai waktu luang (${timeAvailable}), dan skor kecocokan (matchScore 75-99).
+3. Berikan 1 kalimat strategi manajemen backlog (backlogInsight) berdasarkan komposisi game yang sedang dimainkan/di-drop pengguna. Gunakan Bahasa Indonesia yang natural dan ringkas.`;
+
+      const interaction = await client.interactions.create({
+        model,
+        input: prompt,
+        system_instruction: 'Kamu adalah Gemini Quest Advisor, asisten kurator backlog game PC & Steam yang objektif, to-the-point, dan sangat memahami psikologi gamer.',
+        response_format: {
+          type: 'text',
+          mime_type: 'application/json',
+          schema: {
+            type: 'object',
+            properties: {
+              headline: { type: 'string' },
+              recommendations: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    gameId: { type: 'string' },
+                    title: { type: 'string' },
+                    statusInLibrary: { type: 'string' },
+                    matchScore: { type: 'number' },
+                    sessionGoal: { type: 'string' },
+                    reason: { type: 'string' }
+                  },
+                  required: ['title', 'matchScore', 'sessionGoal', 'reason']
+                }
+              },
+              backlogInsight: { type: 'string' }
+            },
+            required: ['headline', 'recommendations', 'backlogInsight']
+          }
+        }
+      });
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(interaction.output_text || '{}');
+      } catch {
+        parsed = {
+          headline: 'Rekomendasi Sesi Bermain',
+          recommendations: [],
+          backlogInsight: interaction.output_text || 'Gagal memformat respons JSON.',
+        };
+      }
+
+      return sendJson(res, 200, {
+        interactionId: interaction.id,
+        model,
+        ...parsed,
+      });
+    }
+
+    // 16. POST /api/gemini/chat (Stateful Multi-Turn Quest Companion)
+    if (req.method === 'POST' && pathname === '/api/gemini/chat') {
+      const payload = await parseBody(req);
+      const apiKey = resolveGeminiApiKey(payload.apiKey);
+      const model = resolveGeminiModel(payload.model);
+      const userMessage = (payload.message || '').trim();
+      const previousInteractionId = payload.previousInteractionId || undefined;
+
+      if (!apiKey) {
+        return sendJson(res, 400, {
+          error: 'API Key Gemini belum diatur. Masukkan GEMINI_API_KEY terlebih dahulu.',
+          needsApiKey: true,
+        });
+      }
+
+      if (!userMessage) {
+        return sendJson(res, 400, { error: 'Pesan tidak boleh kosong.' });
+      }
+
+      const games = readGames();
+      const libraryContext = games.slice(0, 60).map(g =>
+        `- ${g.title} [${g.status}] (${g.playtimeHours}h, Rating: ${g.rating}/10${g.currentProgress ? `, Progress: ${g.currentProgress}` : ''}${g.dropReason ? `, Drop Reason: ${g.dropReason}` : ''})`
+      ).join('\n');
+
+      const systemInstruction = `Kamu adalah Gemini Quest Advisor di aplikasi desktop QuestLog (Steam Backlog & Progress Tracker).
+Gunakan Bahasa Indonesia yang santai, padat, dan membantu. Hindari basa-basi berlebihan.
+Berikut adalah daftar game di library QuestLog pengguna saat ini (${games.length} game):
+${libraryContext || '(Library masih kosong)'}
+
+Bantu pengguna memilih game untuk dimainkan, menyusun strategi menamatkan backlog, merekap cerita game tanpa spoiler, atau memberikan rekomendasi game Steam baru yang sesuai selera mereka.`;
+
+      const client = new GoogleGenAI({ apiKey });
+      const reqOptions = {
+        model,
+        input: userMessage,
+        system_instruction: systemInstruction,
+      };
+      if (previousInteractionId) {
+        reqOptions.previous_interaction_id = previousInteractionId;
+      }
+
+      const interaction = await client.interactions.create(reqOptions);
+      return sendJson(res, 200, {
+        interactionId: interaction.id,
+        reply: interaction.output_text || '',
+        model,
+      });
+    }
+
+    // 17. POST /api/gemini/polish-notes (AI Progress & Review Note Polisher)
+    if (req.method === 'POST' && pathname === '/api/gemini/polish-notes') {
+      const payload = await parseBody(req);
+      const apiKey = resolveGeminiApiKey(payload.apiKey);
+      const model = resolveGeminiModel(payload.model);
+
+      if (!apiKey) {
+        return sendJson(res, 400, {
+          error: 'API Key Gemini belum diatur. Buka menu Gemini Advisor untuk mengatur API Key.',
+          needsApiKey: true,
+        });
+      }
+
+      const { title, status, playtimeHours, currentProgress, dropReason, notes, rating } = payload;
+      const client = new GoogleGenAI({ apiKey });
+
+      const prompt = `Bantu rapikan atau buatkan catatan review & progress singkat untuk game berikut di tracker QuestLog:
+- Judul Game: ${title}
+- Status: ${status}
+- Jam Main: ${playtimeHours || 0} jam
+- Progress Saat Ini: ${currentProgress || '-'}
+${status === 'dropped' ? `- Alasan Drop: ${dropReason || '-'}` : ''}
+- Rating: ${rating || 0}/10
+- Catatan Mentah Pengguna: ${notes || '(Belum ada catatan, buatkan template poin review singkat atau milestone yang relevan dengan game ini)'}
+
+Hasilkan catatan/review dalam Bahasa Indonesia yang ringkas, human-crafted (maksimal 3-4 poin atau 1 paragraf padat), tanpa klise AI.`;
+
+      const interaction = await client.interactions.create({
+        model,
+        input: prompt,
+        system_instruction: 'Kamu adalah asisten penulis jurnal game pribadi yang ringkas, tajam, dan natural.',
+      });
+
+      return sendJson(res, 200, {
+        interactionId: interaction.id,
+        polishedNotes: (interaction.output_text || '').trim(),
+        model,
+      });
     }
 
     // Fallback: static files

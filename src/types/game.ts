@@ -67,3 +67,52 @@ export interface ExportBackupData {
   totalGames: number;
   games: Game[];
 }
+
+export interface LocalSteamGame {
+  steamAppId: string;
+  title: string;
+  playtimeHours: number;
+  lastPlayed: string | null;
+  coverUrl: string;
+  bannerUrl: string;
+  suggestedStatus: GameStatus;
+  alreadyInLibrary: boolean;
+}
+
+export interface LocalSteamScanResult {
+  found: boolean;
+  steamRoot: string | null;
+  totalFound?: number;
+  games: LocalSteamGame[];
+}
+
+export interface GeminiConfig {
+  hasApiKey: boolean;
+  maskedKey: string;
+  model: string;
+  availableModels?: Array<{ id: string; label: string }>;
+}
+
+export interface GeminiRecommendedGame {
+  gameId?: string;
+  title: string;
+  statusInLibrary?: string;
+  matchScore: number;
+  sessionGoal: string;
+  reason: string;
+}
+
+export interface GeminiRecommendResponse {
+  interactionId: string;
+  model: string;
+  headline: string;
+  recommendations: GeminiRecommendedGame[];
+  backlogInsight: string;
+}
+
+export interface GeminiChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}

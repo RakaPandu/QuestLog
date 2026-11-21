@@ -6,6 +6,7 @@
 [![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite_8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Google Gemini](https://img.shields.io/badge/Gemini_API_v1-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![Steam](https://img.shields.io/badge/Steam_API-171a21?style=for-the-badge&logo=steam&logoColor=white)](https://store.steampowered.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
@@ -25,6 +26,14 @@ Aplikasi ini terhubung langsung ke **Steam Store API & Steam CDN** untuk menarik
 ---
 
 ## ✨ Fitur Utama
+
+- 🤖 **Gemini Quest Advisor (`@google/genai` Interactions API v1)**:
+  - **Smart Backlog Picker ("Mau Main Apa Malam Ini?")**: Menganalisis seluruh koleksi game kamu menggunakan model **`gemini-4-hydrogen`** (serta dukungan `gemini-4-argon`, `gemini-4-neon`, `gemini-4-carbon`, dan `gemini-3.5-flash-lite`) dengan *Structured JSON Output* untuk merekomendasikan 3 game paling pas sesuai mood dan waktu luangmu (`30m`, `1-2h`, `3h+`).
+  - **Stateful Multi-Turn Quest Coach**: Diskusi interaktif seputar strategi menyicil backlog, analisis pola drop game, dan rekomendasi game Steam menggunakan `previous_interaction_id`.
+  - **AI Review & Progress Note Polisher**: Tombol 1-klik di setiap detail game untuk menyusun atau merapikan catatan progres dan ulasan pribadimu.
+
+- 💽 **1-Click Local Steam Library Scanner (100% Offline)**:
+  - Otomatis mendeteksi folder instalasi Steam di PC (`appmanifest_*.acf` & `localconfig.vdf`) tanpa perlu API key atau profil publik untuk mengimpor daftar game terpasang beserta total jam mainnya.
 
 - 🔍 **Real-Time Steam Search & Auto-Fetch Artwork**:
   - Cukup ketik judul game di modal pencarian.
@@ -83,7 +92,7 @@ Aplikasi ini terhubung langsung ke **Steam Store API & Steam CDN** untuk menarik
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/RakaPanduAulia/QuestLog.git
+git clone https://github.com/RakaPandu/QuestLog.git
 cd QuestLog
 ```
 
@@ -139,7 +148,7 @@ QuestLog/
 ## 👤 Author
 
 * **Raka Pandu Aulia**
-  * GitHub: [@RakaPanduAulia](https://github.com/RakaPanduAulia)
+  * GitHub: [@RakaPandu](https://github.com/RakaPandu)
   * Email: rakapandu12@gmail.com
 
 ---
