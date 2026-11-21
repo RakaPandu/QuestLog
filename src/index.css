@@ -44,12 +44,13 @@ html, body {
 .surface-card {
   background: #141824;
   border: 1px solid #202738;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.12s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 180px 320px;
 }
 
 .surface-card:hover {
   border-color: #3b4663;
-  transform: translateY(-2px);
 }
 
 /* Electron Frameless Window Drag Region */

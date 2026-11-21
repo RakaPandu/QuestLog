@@ -55,14 +55,18 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'games.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const IMG_CACHE_DIR = path.join(DATA_DIR, 'imgcache');
 const DIST_DIR = path.join(__dirname, 'dist');
 
-// Ensure data & backup directories exist
+// Ensure data, backup & imgcache directories exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+if (!fs.existsSync(IMG_CACHE_DIR)) {
+  fs.mkdirSync(IMG_CACHE_DIR, { recursive: true });
 }
 
 // Ensure initial baseline snapshot exists
@@ -158,45 +162,99 @@ function resolveGeminiApiKey(overrideKey) {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 }
 
+const MODEL_ROTATION_POOL = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-4-hydrogen',
+  'gemini-4-neon',
+  'gemini-4-argon',
+  'gemini-4-carbon',
+  'gemma-4-26b-a4b-it',
+  'gemma-4-31b-it',
+];
+
+// Tracks quota/rate-limit cooldown per model: modelId -> { cooldownUntil: number, status: string, reason: string }
+const modelQuotaState = {};
+
 function resolveGeminiModel(overrideModel) {
-  const allowed = [
-    'gemini-3.1-flash-lite',
-    'gemini-3.5-flash-lite',
-    'gemini-4-hydrogen',
-    'gemini-4-argon',
-    'gemini-4-neon',
-    'gemini-4-carbon',
-  ];
-  if (overrideModel && allowed.includes(overrideModel)) return overrideModel;
+  if (overrideModel && MODEL_ROTATION_POOL.includes(overrideModel)) return overrideModel;
   const cfg = readConfig();
-  if (cfg.geminiModel && allowed.includes(cfg.geminiModel)) return cfg.geminiModel;
+  if (cfg.geminiModel && MODEL_ROTATION_POOL.includes(cfg.geminiModel)) return cfg.geminiModel;
   return 'gemini-3.1-flash-lite';
 }
 
-// Fast Interaction Runner with automatic fallback on 503 High Demand / 429 Free Tier & minimal thinking latency
+function isModelAvailableNow(modelId) {
+  const st = modelQuotaState[modelId];
+  if (!st) return true;
+  if (Date.now() >= st.cooldownUntil) {
+    delete modelQuotaState[modelId];
+    return true;
+  }
+  return false;
+}
+
+function recordModelQuotaFailure(modelId, errMessage = '') {
+  const msg = String(errMessage);
+  let cooldownMs = 60 * 1000; // Default 60s cooldown for per-minute RPM/TPM limit
+  let status = 'rate_limited';
+
+  if (msg.includes('limit: 0') || msg.includes('not found') || msg.includes('not supported')) {
+    cooldownMs = 60 * 60 * 1000; // 1 hour cooldown for models with 0 free-tier quota
+    status = 'zero_quota';
+  } else if (msg.toLowerCase().includes('perday') || msg.toLowerCase().includes('daily') || msg.toLowerCase().includes('quota exceeded')) {
+    cooldownMs = 15 * 60 * 1000; // 15 min cooldown for daily quota
+    status = 'quota_exhausted';
+  } else if (msg.includes('high demand') || msg.includes('service_unavailable') || msg.includes('timeout')) {
+    cooldownMs = 45 * 1000; // 45s cooldown for 503 high demand
+    status = 'high_demand';
+  }
+
+  modelQuotaState[modelId] = {
+    cooldownUntil: Date.now() + cooldownMs,
+    status,
+    reason: msg.slice(0, 140),
+  };
+}
+
+// Fast Interaction Runner with automatic quota/rate-limit rotation across available models
 async function createInteractionFast(apiKey, preferredModel, baseOptions) {
   const client = new GoogleGenAI({ apiKey });
-  const candidates = Array.from(
-    new Set([
-      preferredModel,
-      'gemini-3.1-flash-lite',
-      'gemini-3.5-flash-lite',
-      'gemini-4-hydrogen',
-    ])
-  );
+  const allOrdered = Array.from(new Set([preferredModel, ...MODEL_ROTATION_POOL]));
+
+  // Put currently available (non-cooldown) models first, and cooldown models at the end as last resort
+  const healthy = allOrdered.filter(m => isModelAvailableNow(m));
+  const onCooldown = allOrdered.filter(m => !isModelAvailableNow(m));
+  const candidates = [...healthy, ...onCooldown];
 
   let lastError = null;
   for (const candidateModel of candidates) {
     try {
-      const thinkingLevel = candidateModel.includes('flash-lite') ? 'minimal' : 'low';
-      const interaction = await client.interactions.create({
+      const reqPayload = {
         ...baseOptions,
         model: candidateModel,
-        generation_config: {
+      };
+      if (!candidateModel.startsWith('gemma-')) {
+        const thinkingLevel = candidateModel.includes('flash-lite') ? 'minimal' : 'low';
+        reqPayload.generation_config = {
           thinking_level: thinkingLevel,
           ...(baseOptions.generation_config || {}),
-        },
-      });
+        };
+      }
+
+      const interaction = await client.interactions.create(reqPayload);
+      // Clear any previous cooldown on success
+      delete modelQuotaState[candidateModel];
+
+      // If preferredModel was rate-limited/exhausted and another model succeeded, auto-switch active model in config
+      if (candidateModel !== preferredModel && !isModelAvailableNow(preferredModel)) {
+        writeConfig({ geminiModel: candidateModel });
+      }
+
       return {
         interaction,
         usedModel: candidateModel,
@@ -204,10 +262,11 @@ async function createInteractionFast(apiKey, preferredModel, baseOptions) {
       };
     } catch (err) {
       lastError = err;
-      console.warn(`[Gemini Fallback] Model ${candidateModel} failed (${err.message?.slice(0, 100)}), trying next...`);
+      recordModelQuotaFailure(candidateModel, err?.message || String(err));
+      console.warn(`[Gemini Auto-Rotate] Model ${candidateModel} limit/busy (${err?.message?.slice(0, 90)}), switching to next available model...`);
     }
   }
-  throw lastError || new Error('Semua model Gemini sedang sibuk. Silakan coba beberapa saat lagi.');
+  throw lastError || new Error('Semua model Gemini sedang mencapai limit kuota. Silakan coba beberapa saat lagi.');
 }
 
 // Local Steam Library Scanner
@@ -241,6 +300,7 @@ function detectSteamRoot() {
 
 function readLocalPlaytimes(steamRoot) {
   const playtimes = {}; // appId -> { minutes, lastPlayed }
+  if (!steamRoot) return playtimes;
   const userdataDir = path.join(steamRoot, 'userdata');
   if (!fs.existsSync(userdataDir)) return playtimes;
 
@@ -273,6 +333,184 @@ function readLocalPlaytimes(steamRoot) {
   return playtimes;
 }
 
+// Automatically syncs playtimeHours from local Steam userdata whenever library is refreshed
+function syncPlaytimeFromLocalSteam() {
+  try {
+    const steamRoot = detectSteamRoot();
+    if (!steamRoot) return { updatedCount: 0 };
+
+    const playtimes = readLocalPlaytimes(steamRoot);
+    const games = readGames();
+    let updatedCount = 0;
+
+    for (let i = 0; i < games.length; i++) {
+      const g = games[i];
+      if (!g.steamAppId) continue;
+      const pt = playtimes[String(g.steamAppId)];
+      if (!pt) continue;
+
+      const steamHours = Math.round((pt.minutes / 60) * 10) / 10;
+      if (steamHours > 0 && steamHours !== Number(g.playtimeHours)) {
+        g.playtimeHours = steamHours;
+        if (!g.currentProgress || g.currentProgress.includes('jam tercatat di Steam')) {
+          g.currentProgress = `${steamHours} jam tercatat di Steam`;
+        }
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount > 0) {
+      writeGames(games);
+    }
+    return { updatedCount, games };
+  } catch (err) {
+    console.error('Error syncing Steam playtime:', err);
+    return { updatedCount: 0, games: readGames() };
+  }
+}
+
+// Fast binary VDF v29 parser for appcache/appinfo.vdf (resolves titles & types of uninstalled Steam library games in ~7ms)
+let cachedAppInfoMap = null;
+let cachedAppInfoMtime = 0;
+
+function parseLocalAppInfoVdf(steamRoot) {
+  const appInfoPath = path.join(steamRoot, 'appcache', 'appinfo.vdf');
+  if (!fs.existsSync(appInfoPath)) return new Map();
+
+  try {
+    const stat = fs.statSync(appInfoPath);
+    if (cachedAppInfoMap && stat.mtimeMs === cachedAppInfoMtime) {
+      return cachedAppInfoMap;
+    }
+
+    const buf = fs.readFileSync(appInfoPath);
+    const strTableOffset = Number(buf.readBigInt64LE(8));
+    if (strTableOffset <= 16 || strTableOffset >= buf.length) return new Map();
+
+    const strCount = buf.readUInt32LE(strTableOffset);
+    const strings = [];
+    let p = strTableOffset + 4;
+    for (let i = 0; i < strCount; i++) {
+      let end = p;
+      while (end < buf.length && buf[end] !== 0) end++;
+      strings.push(buf.toString('utf8', p, end));
+      p = end + 1;
+    }
+
+    const nameKeyIdx = strings.indexOf('name');
+    const typeKeyIdx = strings.indexOf('type');
+    if (nameKeyIdx === -1) return new Map();
+
+    const needleName = Buffer.alloc(5);
+    needleName[0] = 0x01;
+    needleName.writeUInt32LE(nameKeyIdx, 1);
+
+    const needleType = Buffer.alloc(5);
+    needleType[0] = 0x01;
+    if (typeKeyIdx !== -1) needleType.writeUInt32LE(typeKeyIdx, 1);
+
+    const map = new Map();
+    let pos = 16;
+    while (pos < strTableOffset - 68) {
+      const appId = buf.readUInt32LE(pos);
+      const size = buf.readUInt32LE(pos + 4);
+      if (appId === 0 || size <= 0 || pos + 8 + size > strTableOffset) break;
+
+      const recordStart = pos + 68;
+      const recordEnd = pos + 8 + size;
+      let title = '';
+      let appType = '';
+
+      const idx = buf.indexOf(needleName, recordStart);
+      if (idx !== -1 && idx < recordEnd) {
+        let sStart = idx + 5;
+        let sEnd = sStart;
+        while (sEnd < recordEnd && buf[sEnd] !== 0) sEnd++;
+        title = buf.toString('utf8', sStart, sEnd);
+      }
+
+      if (typeKeyIdx !== -1) {
+        const tIdx = buf.indexOf(needleType, recordStart);
+        if (tIdx !== -1 && tIdx < recordEnd) {
+          let sStart = tIdx + 5;
+          let sEnd = sStart;
+          while (sEnd < recordEnd && buf[sEnd] !== 0) sEnd++;
+          appType = buf.toString('utf8', sStart, sEnd).toLowerCase();
+        }
+      }
+
+      if (title) {
+        map.set(String(appId), { title, type: appType });
+      }
+      pos += 8 + size;
+    }
+
+    cachedAppInfoMap = map;
+    cachedAppInfoMtime = stat.mtimeMs;
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+// Read all Steam library games registered in config/stplug-in/*.lua (includes uninstalled library games)
+function readLocalStPluginLibrary(steamRoot) {
+  const luaMap = new Map(); // appId -> title
+  const stDir = path.join(steamRoot, 'config', 'stplug-in');
+  if (!fs.existsSync(stDir)) return luaMap;
+
+  try {
+    const files = fs.readdirSync(stDir).filter(f => f.endsWith('.lua'));
+    for (const f of files) {
+      const mFile = f.match(/^(\d+)_(.+)\.lua$/);
+      const raw = fs.readFileSync(path.join(stDir, f), 'utf-8');
+      const mHeader = raw.match(/--\s*Game:\s*(.+?)\s*\(AppID:\s*(\d+)\)/i);
+
+      if (mHeader) {
+        const id = mHeader[2];
+        const name = mHeader[1].trim();
+        if (!name.startsWith('App_') && !name.startsWith('App ')) {
+          luaMap.set(id, name);
+        } else if (!luaMap.has(id)) {
+          luaMap.set(id, name);
+        }
+      } else if (mFile) {
+        const id = mFile[1];
+        const name = mFile[2].replace(/_/g, ' ');
+        if (!luaMap.has(id) || luaMap.get(id).startsWith('App')) {
+          luaMap.set(id, name);
+        }
+      } else {
+        const mId = f.match(/^(\d+)\.lua$/);
+        if (mId && !luaMap.has(mId[1])) {
+          luaMap.set(mId[1], `App ${mId[1]}`);
+        }
+      }
+    }
+  } catch {}
+  return luaMap;
+}
+
+function isNonGameToolTitle(appId, title = '', appType = '') {
+  if (appId === '228980' || appId === '7' || appId === '8' || appId === '480') return true;
+  if (appType && appType !== 'game' && appType !== '') return true;
+  const lower = title.toLowerCase();
+  const excludedKeywords = [
+    'steamworks common redistributables',
+    'dedicated server',
+    'source sdk',
+    'proton ',
+    'steam linux runtime',
+    'steamvr',
+    'soundtrack',
+    'artbook',
+    'wallpapers',
+    'winui2',
+    'steam client',
+  ];
+  return excludedKeywords.some(k => lower.includes(k));
+}
+
 function scanLocalSteamLibrary() {
   const steamRoot = detectSteamRoot();
   if (!steamRoot) {
@@ -280,6 +518,8 @@ function scanLocalSteamLibrary() {
   }
 
   const playtimes = readLocalPlaytimes(steamRoot);
+  const appInfoMap = parseLocalAppInfoVdf(steamRoot);
+  const stPluginMap = readLocalStPluginLibrary(steamRoot);
   const libraryDirs = new Set([path.join(steamRoot, 'steamapps')]);
 
   const vdfPath = path.join(steamRoot, 'steamapps', 'libraryfolders.vdf');
@@ -295,9 +535,49 @@ function scanLocalSteamLibrary() {
   }
 
   const existingGames = readGames();
-  const discovered = [];
-  const seenAppIds = new Set();
+  const discoveredMap = new Map(); // appId -> game object
 
+  const addDiscoveredGame = (appId, rawTitle, isInstalled, acfLastPlayed = 0) => {
+    if (!appId || discoveredMap.has(appId)) return;
+    const info = appInfoMap.get(appId);
+    let title = rawTitle;
+    if ((!title || title.startsWith('App ') || title.startsWith('App_')) && info?.title) {
+      title = info.title;
+    }
+    if (!title) return;
+    if (isNonGameToolTitle(appId, title, info?.type || '')) return;
+
+    const ptData = playtimes[appId] || { minutes: 0, lastPlayed: 0 };
+    const lastPlayedTs = Math.max(ptData.lastPlayed || 0, acfLastPlayed);
+    const playtimeHours = Math.round((ptData.minutes / 60) * 10) / 10;
+
+    const alreadyInLibrary = existingGames.some(
+      g => (g.steamAppId && String(g.steamAppId) === String(appId)) || g.title.toLowerCase() === title.toLowerCase()
+    );
+
+    let suggestedStatus = 'plan_to_play';
+    if (playtimeHours > 0) {
+      suggestedStatus = 'playing';
+    }
+
+    const localCover = findLocalSteamImageFile(appId, 'cover', steamRoot);
+    const localBanner = findLocalSteamImageFile(appId, 'banner', steamRoot);
+    const steamCdn = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}`;
+
+    discoveredMap.set(appId, {
+      steamAppId: appId,
+      title,
+      isInstalled,
+      playtimeHours,
+      lastPlayed: lastPlayedTs > 0 ? new Date(lastPlayedTs * 1000).toISOString() : null,
+      coverUrl: localCover ? `/api/steam/local-image/${appId}/cover` : `${steamCdn}/library_600x900.jpg`,
+      bannerUrl: localBanner ? `/api/steam/local-image/${appId}/banner` : `${steamCdn}/header.jpg`,
+      suggestedStatus,
+      alreadyInLibrary,
+    });
+  };
+
+  // 1. Scan installed games from steamapps/appmanifest_*.acf
   for (const steamappsDir of libraryDirs) {
     if (!fs.existsSync(steamappsDir)) continue;
     const files = fs.readdirSync(steamappsDir).filter(f => f.startsWith('appmanifest_') && f.endsWith('.acf'));
@@ -307,55 +587,63 @@ function scanLocalSteamLibrary() {
         const appIdMatch = raw.match(/"appid"\s+"(\d+)"/i);
         const nameMatch = raw.match(/"name"\s+"([^"]+)"/i);
         const lastPlayedMatch = raw.match(/"LastPlayed"\s+"(\d+)"/i);
-
         if (!appIdMatch || !nameMatch) continue;
-        const appId = appIdMatch[1];
-        if (seenAppIds.has(appId)) continue;
-        seenAppIds.add(appId);
-        const title = nameMatch[1];
-
-        // Skip Steamworks Common Redistributables or Proton/Tools
-        if (appId === '228980' || title.toLowerCase().includes('steamworks common redistributables')) {
-          continue;
-        }
-
-        const ptData = playtimes[appId] || { minutes: 0, lastPlayed: 0 };
-        const acfLastPlayed = lastPlayedMatch ? Number(lastPlayedMatch[1]) : 0;
-        const lastPlayedTs = Math.max(ptData.lastPlayed || 0, acfLastPlayed);
-        const playtimeHours = Math.round((ptData.minutes / 60) * 10) / 10;
-
-        const alreadyInLibrary = existingGames.some(
-          g => (g.steamAppId && String(g.steamAppId) === String(appId)) || g.title.toLowerCase() === title.toLowerCase()
+        addDiscoveredGame(
+          appIdMatch[1],
+          nameMatch[1],
+          true,
+          lastPlayedMatch ? Number(lastPlayedMatch[1]) : 0
         );
-
-        let suggestedStatus = 'plan_to_play';
-        if (playtimeHours > 0) {
-          suggestedStatus = 'playing';
-        }
-
-        const localCover = findLocalSteamImageFile(appId, 'cover', steamRoot);
-        const localBanner = findLocalSteamImageFile(appId, 'banner', steamRoot);
-        const steamCdn = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}`;
-
-        discovered.push({
-          steamAppId: appId,
-          title,
-          playtimeHours,
-          lastPlayed: lastPlayedTs > 0 ? new Date(lastPlayedTs * 1000).toISOString() : null,
-          coverUrl: localCover ? `/api/steam/local-image/${appId}/cover` : `${steamCdn}/library_600x900.jpg`,
-          bannerUrl: localBanner ? `/api/steam/local-image/${appId}/banner` : `${steamCdn}/header.jpg`,
-          suggestedStatus,
-          alreadyInLibrary,
-        });
       } catch {}
     }
   }
 
-  discovered.sort((a, b) => b.playtimeHours - a.playtimeHours || a.title.localeCompare(b.title));
+  // 2. Scan uninstalled Steam Library games from config/stplug-in/*.lua
+  for (const [appId, luaTitle] of stPluginMap.entries()) {
+    addDiscoveredGame(appId, luaTitle, false, 0);
+  }
+
+  // 3. Scan owned/cached Steam Library games from appcache/librarycache + localconfig.vdf that have titles in appinfo.vdf
+  const cacheDir = path.join(steamRoot, 'appcache', 'librarycache');
+  if (fs.existsSync(cacheDir)) {
+    try {
+      const dirs = fs.readdirSync(cacheDir, { withFileTypes: true });
+      for (const d of dirs) {
+        if (d.isDirectory() && /^\d+$/.test(d.name)) {
+          const appId = d.name;
+          const info = appInfoMap.get(appId);
+          // Include if it has recorded playtime in localconfig.vdf OR is a known game in appinfo.vdf with cached library assets
+          if (info && info.type === 'game' && (playtimes[appId] || stPluginMap.has(appId))) {
+            addDiscoveredGame(appId, info.title, false, 0);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Also check any game with playtime in localconfig.vdf that has a title in appinfo.vdf
+  for (const appId of Object.keys(playtimes)) {
+    const info = appInfoMap.get(appId);
+    if (info && info.type === 'game') {
+      addDiscoveredGame(appId, info.title, false, 0);
+    }
+  }
+
+  const discovered = Array.from(discoveredMap.values());
+  discovered.sort((a, b) => {
+    if (a.isInstalled !== b.isInstalled) return a.isInstalled ? -1 : 1;
+    return b.playtimeHours - a.playtimeHours || a.title.localeCompare(b.title);
+  });
+
+  const installedCount = discovered.filter(g => g.isInstalled).length;
+  const uninstalledCount = discovered.length - installedCount;
+
   return {
     found: true,
     steamRoot,
     totalFound: discovered.length,
+    installedCount,
+    uninstalledCount,
     games: discovered,
   };
 }
@@ -614,9 +902,9 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname;
 
   try {
-    // 1. GET /api/games
+    // 1. GET /api/games (Auto-syncs latest Steam playtime on every refresh)
     if (req.method === 'GET' && pathname === '/api/games') {
-      const games = readGames();
+      const { games } = syncPlaytimeFromLocalSteam();
       return sendJson(res, 200, games);
     }
 
@@ -1000,9 +1288,9 @@ const server = http.createServer(async (req, res) => {
             status: item.status || item.suggestedStatus || 'plan_to_play',
             coverUrl: item.coverUrl || '',
             bannerUrl: item.bannerUrl || '',
-            genres: item.genres || ['Steam Local'],
+            genres: item.genres || (item.isInstalled === false ? ['Steam Library'] : ['Steam Installed']),
             releaseDate: '',
-            developer: 'Steam Installed',
+            developer: item.isInstalled === false ? 'Steam Library (Belum Terinstall)' : 'Steam Installed',
             playtimeHours: Number(item.playtimeHours) || 0,
             currentProgress: item.playtimeHours > 0 ? `${item.playtimeHours} jam tercatat di Steam` : '',
             dropReason: '',
@@ -1029,18 +1317,39 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && pathname === '/api/gemini/config') {
       const apiKey = resolveGeminiApiKey();
       const model = resolveGeminiModel();
+      const modelLabels = {
+        'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite (Ultra-Fast & Hemat Token - Recommended)',
+        'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite (Fast 1M Context)',
+        'gemini-3.8-flash': 'Gemini 3.8 Flash (Balanced Multimodal)',
+        'gemini-3.7-flash': 'Gemini 3.7 Flash (Fast Reasoning)',
+        'gemini-3.6-flash': 'Gemini 3.6 Flash (Stable Flash)',
+        'gemini-3.5-flash': 'Gemini 3.5 Flash (General Purpose)',
+        'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+        'gemini-4-hydrogen': 'Gemini 4 Hydrogen (Frontier Balanced)',
+        'gemini-4-neon': 'Gemini 4 Neon (Frontier Speed)',
+        'gemini-4-argon': 'Gemini 4 Argon (Interactive Reasoning)',
+        'gemini-4-carbon': 'Gemini 4 Carbon (Deep Frontier Reasoning)',
+        'gemma-4-26b-a4b-it': 'Gemma 4 26B MoE (Open Weights Fallback)',
+        'gemma-4-31b-it': 'Gemma 4 31B Dense (Open Weights Fallback)',
+      };
+
+      const availableModels = MODEL_ROTATION_POOL.map(id => {
+        const available = isModelAvailableNow(id);
+        const st = modelQuotaState[id];
+        const statusTag = available ? 'Ready' : `Limit/Cooldown (${st?.status || 'busy'})`;
+        return {
+          id,
+          label: `${modelLabels[id] || id} [${statusTag}]`,
+          available,
+          status: available ? 'ready' : (st?.status || 'cooldown'),
+        };
+      });
+
       return sendJson(res, 200, {
         hasApiKey: Boolean(apiKey),
         maskedKey: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : '',
         model,
-        availableModels: [
-          { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (Ultra-Fast & Hemat Token - Recommended)' },
-          { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Fast 1M Context)' },
-          { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen (Frontier Balanced + Auto-Fallback)' },
-          { id: 'gemini-4-argon', label: 'Gemini 4 Argon (Interactive Reasoning)' },
-          { id: 'gemini-4-neon', label: 'Gemini 4 Neon (Frontier Speed)' },
-          { id: 'gemini-4-carbon', label: 'Gemini 4 Carbon (Deep Frontier Reasoning)' },
-        ],
+        availableModels,
       });
     }
 
@@ -1214,23 +1523,61 @@ Catatan: ${notes || '(Buat ringkasan singkat sesuai status & progress)'}`;
       });
     }
 
-    // 18. GET /api/steam/local-image/:appId/:type (Serves local Steam librarycache artwork or falls back to Steam API)
+    // 18. GET /api/steam/local-image/:appId/:type (Serves lightweight cached WebP thumbnails from local Steam librarycache)
     if (req.method === 'GET' && pathname.startsWith('/api/steam/local-image/')) {
       const parts = pathname.replace('/api/steam/local-image/', '').split('/');
-      const appId = parts[0];
+      const appId = parts[0].replace(/[^0-9]/g, '');
       const imgType = parts[1] === 'banner' ? 'banner' : 'cover';
 
-      const localFile = findLocalSteamImageFile(appId, imgType);
-      if (localFile && fs.existsSync(localFile)) {
-        const ext = path.extname(localFile).toLowerCase();
-        const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-        const buf = fs.readFileSync(localFile);
+      const etag = `"ql-${appId}-${imgType}-v2"`;
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304);
+        return res.end();
+      }
+
+      const cachedWebp = path.join(IMG_CACHE_DIR, `${appId}_${imgType}.webp`);
+      if (fs.existsSync(cachedWebp)) {
+        const buf = fs.readFileSync(cachedWebp);
         res.writeHead(200, {
-          'Content-Type': mime,
-          'Cache-Control': 'public, max-age=3600',
+          'Content-Type': 'image/webp',
+          'ETag': etag,
+          'Cache-Control': 'public, max-age=86400',
           'Access-Control-Allow-Origin': '*',
         });
         return res.end(buf);
+      }
+
+      const localFile = findLocalSteamImageFile(appId, imgType);
+      if (localFile && fs.existsSync(localFile)) {
+        try {
+          const maxW = imgType === 'banner' ? 640 : 320;
+          const maxH = imgType === 'banner' ? 320 : 480;
+          const webpBuf = await sharp(localFile)
+            .resize({ width: maxW, height: maxH, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer();
+          try {
+            fs.writeFileSync(cachedWebp, webpBuf);
+          } catch {}
+          res.writeHead(200, {
+            'Content-Type': 'image/webp',
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+            'Access-Control-Allow-Origin': '*',
+          });
+          return res.end(webpBuf);
+        } catch {
+          const ext = path.extname(localFile).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+          const buf = fs.readFileSync(localFile);
+          res.writeHead(200, {
+            'Content-Type': mime,
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+            'Access-Control-Allow-Origin': '*',
+          });
+          return res.end(buf);
+        }
       }
 
       // Online fallback if not cached locally

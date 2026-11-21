@@ -8,7 +8,7 @@ interface GameCardProps {
   onQuickStatusChange: (status: GameStatus) => void;
 }
 
-export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
+export const GameCard: React.FC<GameCardProps> = React.memo(({ game, onClick }) => {
   const [imgSrc, setImgSrc] = useState<string>(game.coverUrl || '');
   const [isLandscapeImg, setIsLandscapeImg] = useState<boolean>(game.coverFit === 'contain-blur');
   const [imgFailed, setImgFailed] = useState<boolean>(false);
@@ -89,32 +89,36 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
       <div className="relative aspect-[2/3] w-full bg-[#0a0c12] overflow-hidden">
         {imgSrc && !imgFailed ? (
           useContainBlur ? (
-            <div className="relative w-full h-full flex items-center justify-center bg-[#0a0c12]">
+            <div className="relative w-full h-full flex items-center justify-center bg-[#090b10]">
               <img
                 src={imgSrc}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-40 pointer-events-none"
+                decoding="async"
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none"
                 style={{ objectPosition: objectPos }}
               />
               <img
                 src={imgSrc}
                 alt={game.title}
+                decoding="async"
                 loading="lazy"
                 onLoad={handleImgLoad}
                 onError={handleImgError}
-                className="relative z-10 w-full max-h-full object-contain shadow-md transition-transform duration-200 group-hover:scale-102"
+                className="relative z-10 w-full max-h-full object-contain shadow-md"
               />
             </div>
           ) : (
             <img
               src={imgSrc}
               alt={game.title}
+              decoding="async"
               loading="lazy"
               onLoad={handleImgLoad}
               onError={handleImgError}
               style={{ objectPosition: objectPos }}
-              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-102"
+              className="w-full h-full object-cover"
             />
           )
         ) : (
@@ -210,4 +214,4 @@ export const GameCard: React.FC<GameCardProps> = ({ game, onClick }) => {
       </div>
     </div>
   );
-};
+});

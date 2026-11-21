@@ -75,6 +75,7 @@ export interface ExportBackupData {
 export interface LocalSteamGame {
   steamAppId: string;
   title: string;
+  isInstalled?: boolean;
   playtimeHours: number;
   lastPlayed: string | null;
   coverUrl: string;
@@ -87,6 +88,8 @@ export interface LocalSteamScanResult {
   found: boolean;
   steamRoot: string | null;
   totalFound?: number;
+  installedCount?: number;
+  uninstalledCount?: number;
   games: LocalSteamGame[];
 }
 
@@ -94,7 +97,7 @@ export interface GeminiConfig {
   hasApiKey: boolean;
   maskedKey: string;
   model: string;
-  availableModels?: Array<{ id: string; label: string }>;
+  availableModels?: Array<{ id: string; label: string; available?: boolean; status?: string }>;
 }
 
 export interface GeminiRecommendedGame {
