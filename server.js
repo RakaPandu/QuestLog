@@ -333,30 +333,59 @@ function readLocalPlaytimes(steamRoot) {
   return playtimes;
 }
 
-// Automatically syncs playtimeHours from local Steam userdata whenever library is refreshed
+// Automatically syncs playtimeHours and local metadata (genres, developer, releaseDate) from local Steam cache
 function syncPlaytimeFromLocalSteam() {
   try {
     const steamRoot = detectSteamRoot();
     if (!steamRoot) return { updatedCount: 0 };
 
     const playtimes = readLocalPlaytimes(steamRoot);
+    const appInfoMap = parseLocalAppInfoVdf(steamRoot);
     const games = readGames();
     let updatedCount = 0;
 
     for (let i = 0; i < games.length; i++) {
       const g = games[i];
       if (!g.steamAppId) continue;
-      const pt = playtimes[String(g.steamAppId)];
-      if (!pt) continue;
+      let changed = false;
 
-      const steamHours = Math.round((pt.minutes / 60) * 10) / 10;
-      if (steamHours > 0 && steamHours !== Number(g.playtimeHours)) {
-        g.playtimeHours = steamHours;
-        if (!g.currentProgress || g.currentProgress.includes('jam tercatat di Steam')) {
-          g.currentProgress = `${steamHours} jam tercatat di Steam`;
+      const pt = playtimes[String(g.steamAppId)];
+      if (pt) {
+        const steamHours = Math.round((pt.minutes / 60) * 10) / 10;
+        if (steamHours > 0 && steamHours !== Number(g.playtimeHours)) {
+          g.playtimeHours = steamHours;
+          if (!g.currentProgress || g.currentProgress.includes('jam tercatat di Steam')) {
+            g.currentProgress = `${steamHours} jam tercatat di Steam`;
+          }
+          changed = true;
         }
-        updatedCount++;
       }
+
+      const info = appInfoMap.get(String(g.steamAppId));
+      if (info) {
+        const hasPlaceholderGenres =
+          !Array.isArray(g.genres) ||
+          g.genres.length === 0 ||
+          g.genres.every(x => x === 'Steam Library' || x === 'Steam Installed');
+        if (hasPlaceholderGenres && info.genres && info.genres.length > 0) {
+          g.genres = info.genres;
+          changed = true;
+        }
+        const hasPlaceholderDev =
+          !g.developer ||
+          g.developer === 'Steam Library (Belum Terinstall)' ||
+          g.developer === 'Steam Installed';
+        if (hasPlaceholderDev && info.developer) {
+          g.developer = info.developer;
+          changed = true;
+        }
+        if (!g.releaseDate && info.releaseDate) {
+          g.releaseDate = info.releaseDate;
+          changed = true;
+        }
+      }
+
+      if (changed) updatedCount++;
     }
 
     if (updatedCount > 0) {
@@ -369,7 +398,59 @@ function syncPlaytimeFromLocalSteam() {
   }
 }
 
-// Fast binary VDF v29 parser for appcache/appinfo.vdf (resolves titles & types of uninstalled Steam library games in ~7ms)
+const STEAM_GENRE_MAP = {
+  '1': 'Action',
+  '2': 'Strategy',
+  '3': 'RPG',
+  '4': 'Casual',
+  '9': 'Racing',
+  '18': 'Sports',
+  '23': 'Indie',
+  '25': 'Adventure',
+  '28': 'Simulation',
+  '29': 'MMO',
+  '37': 'Free to Play',
+  '70': 'Early Access',
+};
+
+const STEAM_TAG_MAP = {
+  '19': 'Action',
+  '21': 'Adventure',
+  '122': 'RPG',
+  '9': 'Strategy',
+  '597': 'Casual',
+  '599': 'Simulation',
+  '492': 'Indie',
+  '699': 'Racing',
+  '701': 'Sports',
+  '128': 'MMO',
+  '1663': 'FPS',
+  '1664': 'Puzzle',
+  '1667': 'Horror',
+  '1695': 'Open World',
+  '1716': 'Roguelike',
+  '3959': 'Roguelite',
+  '29481': 'Souls-like',
+  '1742': 'Story Rich',
+  '3942': 'Sci-Fi',
+  '1684': 'Fantasy',
+  '1774': 'Shooter',
+  '1625': 'Platformer',
+  '1662': 'Survival',
+  '1677': 'Turn-Based',
+  '1720': 'Dungeon Crawler',
+  '1646': 'Hack & Slash',
+  '3810': 'Sandbox',
+  '1676': 'RTS',
+  '1708': 'Tactical',
+  '3834': 'Exploration',
+  '1685': 'Co-op',
+  '3859': 'Multiplayer',
+  '4182': 'Singleplayer',
+  '113': 'Free to Play',
+};
+
+// Fast binary VDF v29 parser for appcache/appinfo.vdf (resolves titles, types, genres, developer & releaseDate in ~15ms)
 let cachedAppInfoMap = null;
 let cachedAppInfoMtime = 0;
 
@@ -397,17 +478,39 @@ function parseLocalAppInfoVdf(steamRoot) {
       p = end + 1;
     }
 
-    const nameKeyIdx = strings.indexOf('name');
-    const typeKeyIdx = strings.indexOf('type');
-    if (nameKeyIdx === -1) return new Map();
-
-    const needleName = Buffer.alloc(5);
-    needleName[0] = 0x01;
-    needleName.writeUInt32LE(nameKeyIdx, 1);
-
-    const needleType = Buffer.alloc(5);
-    needleType[0] = 0x01;
-    if (typeKeyIdx !== -1) needleType.writeUInt32LE(typeKeyIdx, 1);
+    const parseVdfNode = (offset, limit) => {
+      const obj = {};
+      let cur = offset;
+      while (cur < limit) {
+        const type = buf[cur++];
+        if (type === 0x08) break;
+        if (cur + 4 > limit) break;
+        const keyIdx = buf.readUInt32LE(cur);
+        cur += 4;
+        const key = strings[keyIdx] || `key_${keyIdx}`;
+        if (type === 0x00) {
+          const res = parseVdfNode(cur, limit);
+          obj[key] = res.node;
+          cur = res.pos;
+        } else if (type === 0x01) {
+          let end = cur;
+          while (end < limit && buf[end] !== 0) end++;
+          obj[key] = buf.toString('utf8', cur, end);
+          cur = end + 1;
+        } else if (type === 0x02) {
+          if (cur + 4 > limit) break;
+          obj[key] = buf.readInt32LE(cur);
+          cur += 4;
+        } else if (type === 0x07) {
+          if (cur + 8 > limit) break;
+          obj[key] = Number(buf.readBigUInt64LE(cur));
+          cur += 8;
+        } else {
+          break;
+        }
+      }
+      return { node: obj, pos: cur };
+    };
 
     const map = new Map();
     let pos = 16;
@@ -418,29 +521,77 @@ function parseLocalAppInfoVdf(steamRoot) {
 
       const recordStart = pos + 68;
       const recordEnd = pos + 8 + size;
-      let title = '';
-      let appType = '';
+      const { node } = parseVdfNode(recordStart, recordEnd);
+      const common = node?.appinfo?.common;
+      const extended = node?.appinfo?.extended;
 
-      const idx = buf.indexOf(needleName, recordStart);
-      if (idx !== -1 && idx < recordEnd) {
-        let sStart = idx + 5;
-        let sEnd = sStart;
-        while (sEnd < recordEnd && buf[sEnd] !== 0) sEnd++;
-        title = buf.toString('utf8', sStart, sEnd);
-      }
-
-      if (typeKeyIdx !== -1) {
-        const tIdx = buf.indexOf(needleType, recordStart);
-        if (tIdx !== -1 && tIdx < recordEnd) {
-          let sStart = tIdx + 5;
-          let sEnd = sStart;
-          while (sEnd < recordEnd && buf[sEnd] !== 0) sEnd++;
-          appType = buf.toString('utf8', sStart, sEnd).toLowerCase();
-        }
-      }
+      const title = common?.name ? String(common.name) : '';
+      const appType = common?.type ? String(common.type).toLowerCase() : '';
 
       if (title) {
-        map.set(String(appId), { title, type: appType });
+        const genreSet = new Set();
+        let hasFreeToPlay = false;
+
+        const rawGenres = common?.genres ? Object.values(common.genres) : [];
+        if (common?.primary_genre && !rawGenres.includes(common.primary_genre)) {
+          rawGenres.unshift(common.primary_genre);
+        }
+        for (const gid of rawGenres) {
+          const label = STEAM_GENRE_MAP[String(gid)];
+          if (label === 'Free to Play') {
+            hasFreeToPlay = true;
+          } else if (label) {
+            genreSet.add(label);
+          }
+        }
+
+        const rawTags = common?.store_tags ? Object.values(common.store_tags) : [];
+        for (const tid of rawTags) {
+          if (genreSet.size >= 4) break;
+          const label = STEAM_TAG_MAP[String(tid)];
+          if (label === 'Free to Play') {
+            hasFreeToPlay = true;
+          } else if (label) {
+            genreSet.add(label);
+          }
+        }
+
+        if (hasFreeToPlay && genreSet.size < 4) {
+          genreSet.add('Free to Play');
+        }
+
+        let developer = extended?.developer ? String(extended.developer).trim() : '';
+        if (!developer && common?.associations && typeof common.associations === 'object') {
+          for (const assoc of Object.values(common.associations)) {
+            if (assoc?.type === 'developer' && assoc?.name) {
+              developer = String(assoc.name).trim();
+              break;
+            }
+          }
+        }
+        if (!developer && extended?.publisher) {
+          developer = String(extended.publisher).trim();
+        }
+
+        let releaseDate = '';
+        const relTs = Number(common?.steam_release_date || common?.original_release_date || 0);
+        if (relTs > 31536000) {
+          try {
+            releaseDate = new Date(relTs * 1000).toLocaleDateString('id-ID', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            });
+          } catch {}
+        }
+
+        map.set(String(appId), {
+          title,
+          type: appType,
+          genres: Array.from(genreSet).slice(0, 4),
+          developer,
+          releaseDate,
+        });
       }
       pos += 8 + size;
     }
@@ -572,6 +723,9 @@ function scanLocalSteamLibrary() {
       lastPlayed: lastPlayedTs > 0 ? new Date(lastPlayedTs * 1000).toISOString() : null,
       coverUrl: localCover ? `/api/steam/local-image/${appId}/cover` : `${steamCdn}/library_600x900.jpg`,
       bannerUrl: localBanner ? `/api/steam/local-image/${appId}/banner` : `${steamCdn}/header.jpg`,
+      genres: info?.genres?.length ? info.genres : [],
+      developer: info?.developer || '',
+      releaseDate: info?.releaseDate || '',
       suggestedStatus,
       alreadyInLibrary,
     });
@@ -1282,21 +1436,48 @@ const server = http.createServer(async (req, res) => {
       const currentGames = readGames();
       createSnapshot('before-local-steam-import', currentGames);
 
+      const steamRoot = detectSteamRoot();
+      const appInfoMap = steamRoot ? parseLocalAppInfoVdf(steamRoot) : new Map();
+
       let addedCount = 0;
       let updatedCount = 0;
 
       for (const item of itemsToImport) {
+        const info = item.steamAppId ? appInfoMap.get(String(item.steamAppId)) : null;
+        const resolvedGenres =
+          Array.isArray(item.genres) && item.genres.length > 0 && !item.genres.every(x => x === 'Steam Library' || x === 'Steam Installed')
+            ? item.genres
+            : (info?.genres?.length ? info.genres : (item.isInstalled === false ? ['Steam Library'] : ['Steam Installed']));
+        const resolvedDev =
+          item.developer && item.developer !== 'Steam Library (Belum Terinstall)' && item.developer !== 'Steam Installed'
+            ? item.developer
+            : (info?.developer || (item.isInstalled === false ? 'Steam Library (Belum Terinstall)' : 'Steam Installed'));
+        const resolvedRelease = item.releaseDate || info?.releaseDate || '';
+
         const existingIdx = currentGames.findIndex(
           g => (g.steamAppId && item.steamAppId && String(g.steamAppId) === String(item.steamAppId)) ||
                (g.title && item.title && g.title.toLowerCase() === item.title.toLowerCase())
         );
 
         if (existingIdx !== -1) {
+          const ex = currentGames[existingIdx];
+          const exHasPlaceholderGenres =
+            !Array.isArray(ex.genres) ||
+            ex.genres.length === 0 ||
+            ex.genres.every(x => x === 'Steam Library' || x === 'Steam Installed');
+          const exHasPlaceholderDev =
+            !ex.developer ||
+            ex.developer === 'Steam Library (Belum Terinstall)' ||
+            ex.developer === 'Steam Installed';
+
           currentGames[existingIdx] = {
-            ...currentGames[existingIdx],
-            playtimeHours: Math.max(Number(currentGames[existingIdx].playtimeHours) || 0, Number(item.playtimeHours) || 0),
-            coverUrl: currentGames[existingIdx].coverUrl || item.coverUrl || '',
-            bannerUrl: currentGames[existingIdx].bannerUrl || item.bannerUrl || '',
+            ...ex,
+            playtimeHours: Math.max(Number(ex.playtimeHours) || 0, Number(item.playtimeHours) || 0),
+            coverUrl: ex.coverUrl || item.coverUrl || '',
+            bannerUrl: ex.bannerUrl || item.bannerUrl || '',
+            genres: exHasPlaceholderGenres ? resolvedGenres : ex.genres,
+            developer: exHasPlaceholderDev ? resolvedDev : ex.developer,
+            releaseDate: ex.releaseDate || resolvedRelease,
             updatedAt: new Date().toISOString(),
           };
           updatedCount++;
@@ -1308,9 +1489,9 @@ const server = http.createServer(async (req, res) => {
             status: item.status || item.suggestedStatus || 'plan_to_play',
             coverUrl: item.coverUrl || '',
             bannerUrl: item.bannerUrl || '',
-            genres: item.genres || (item.isInstalled === false ? ['Steam Library'] : ['Steam Installed']),
-            releaseDate: '',
-            developer: item.isInstalled === false ? 'Steam Library (Belum Terinstall)' : 'Steam Installed',
+            genres: resolvedGenres,
+            releaseDate: resolvedRelease,
+            developer: resolvedDev,
             playtimeHours: Number(item.playtimeHours) || 0,
             currentProgress: item.playtimeHours > 0 ? `${item.playtimeHours} jam tercatat di Steam` : '',
             dropReason: '',
